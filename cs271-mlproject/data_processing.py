@@ -1,5 +1,5 @@
 import polars as pl
-from typing import Optional, Tuple, List, Dict, Set
+from typing import Optional, Tuple, List, Dict, Set, Generator, Callable
 
 from dataclasses import dataclass, field
 
@@ -68,25 +68,38 @@ class RawHumanChatBotData:
         """
         return len(self.data.filter(type="gpt"))
 
-    def get_combined_text(self, article_type: str, n_paragraphs: Optional[int] = None) -> str:
-        """Get multiple articles of the given type merged into a single string.
+    def get_articles(self, article_type: str, n_articles: Optional[int] = None) -> Generator[str, None, None]:
+        """Get multiple articles of the given type as a generator.
 
         Args:
             article_type (str): the article type
-            n_paragraphs (Optional[int], optional): The number of paragraphs.
-                Defaults to None. None means all paragraphs.
+            n_articles (Optional[int], optional): The number of articles.
+                Defaults to None. None means all article.
 
         Returns:
-            str: a single string with all the paragraphs.
+            Generator[str, None, None]: A generator where you can get each text instance.
         """
         if article_type not in self.available_types:
             raise ValueError(f"Type {article_type} not in available types.")
         filtered_data_text = self.data.filter(
             type=article_type)["text"]
-        if n_paragraphs is not None:
-            filtered_data_text = filtered_data_text[:n_paragraphs]
-        list_of_text = filtered_data_text.to_list()
-        return "".join(list_of_text)
+        if n_articles is not None:
+            filtered_data_text = filtered_data_text[:n_articles]
+        for text in filtered_data_text:
+            yield text
+
+
+@dataclass
+class ReusableGenerator:
+    """
+    A reusable generator is simply a wrapper around a generator function
+    that allows you to create a new generator from the function every time
+    you need to iterate over it.
+    """
+    generator_func: Callable[[], Generator]
+
+    def __iter__(self):
+        return self.generator_func()
 
 
 @dataclass

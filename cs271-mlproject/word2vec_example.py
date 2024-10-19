@@ -1,9 +1,10 @@
 from models import LogisticRegression
 from embeddings import Word2VecEmbedder
-from data_processing import RawHumanChatBotData, HumanChatBotDataset
+from data_processing import RawHumanChatBotData, HumanChatBotDataset, ReusableGenerator
 from nltk.tokenize import sent_tokenize, word_tokenize
 from gensim.models import Word2Vec
 
+from typing import Optional, Iterable
 import torch
 from torch.utils.data import DataLoader, random_split
 import nltk
@@ -13,7 +14,7 @@ nltk.download('punkt_tab')
 def train_word2vec_on_article_type(
     dataset: RawHumanChatBotData,
     article_type: str,
-    n_articles: int,
+    n_articles: Optional[int] = None,
     vector_size: int = 100,
     min_count: int = 1,
     window=5
@@ -22,15 +23,21 @@ def train_word2vec_on_article_type(
     Train a Word2Vec model on the chatbot data.
     """
     print(f"Training Word2Vec model on {article_type} articles...")
-    corpus_text = dataset.get_combined_text(
-        article_type, n_articles).replace("\n", " ")
-    data = []
-    for i in sent_tokenize(corpus_text):
-        temp = []
-        for j in word_tokenize(i):
-            temp.append(j.lower())
-        data.append(temp)
-    model = Word2Vec(data, min_count=min_count,
+
+    def get_articles_wrapper():
+        return dataset.get_articles(article_type, n_articles)
+
+    articles = ReusableGenerator(get_articles_wrapper)
+
+    def data_generator():
+        for article in articles:
+            article = article.replace("\n", " ")
+            for i in sent_tokenize(article):
+                for j in word_tokenize(i):
+                    yield j.lower()
+
+    data_gen = ReusableGenerator(data_generator)
+    model = Word2Vec(data_gen, min_count=min_count,
                      vector_size=vector_size, window=window)
     return model
 
