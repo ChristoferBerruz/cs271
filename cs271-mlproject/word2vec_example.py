@@ -29,14 +29,16 @@ def train_word2vec_on_article_type(
 
     articles = ReusableGenerator(get_articles_wrapper)
 
-    def data_generator():
+    def sentence_generator():
         for article in articles:
             article = article.replace("\n", " ")
             for i in sent_tokenize(article):
+                sentence = []
                 for j in word_tokenize(i):
-                    yield j.lower()
+                    sentence.append(j.lower())
+                yield sentence
 
-    data_gen = ReusableGenerator(data_generator)
+    data_gen = ReusableGenerator(sentence_generator)
     model = Word2Vec(data_gen, min_count=min_count,
                      vector_size=vector_size, window=window)
     return model
