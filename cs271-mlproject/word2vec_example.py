@@ -4,29 +4,28 @@ from data_processing import RawHumanChatBotData, HumanChatBotDataset, ReusableGe
 from nltk.tokenize import sent_tokenize, word_tokenize
 from gensim.models import Word2Vec
 
+
+import argparse
 from typing import Optional, Iterable
 import torch
 from torch.utils.data import DataLoader, random_split
 import nltk
-nltk.download('punkt_tab')
-nltk.download('punkt')
 
 
 def train_word2vec_on_article_type(
     dataset: RawHumanChatBotData,
     article_type: str,
-    n_articles: Optional[int] = None,
     vector_size: int = 100,
     min_count: int = 1,
     window=5
 ) -> Word2Vec:
     """
-    Train a Word2Vec model on the chatbot data.
+    Train a Word2Vec model on the entire dataset.
     """
     print(f"Training Word2Vec model on {article_type} articles...")
 
     def get_articles_wrapper():
-        return dataset.get_articles(article_type, n_articles)
+        return dataset.get_articles(article_type)
 
     articles = ReusableGenerator(get_articles_wrapper)
 
@@ -43,26 +42,26 @@ def train_word2vec_on_article_type(
     return model
 
 
-def main():
+def main(csv_path: str, n_articles_per_type: Optional[int] = None):
     """A simple example of how to use Word2Vec with a Logistic Regression model
     for classification.
     """
+    print(
+        f"Word2vec training using data from {csv_path} and n_articles {n_articles_per_type}")
+    nltk.download('punkt_tab')
+    nltk.download('punkt')
     vector_size = 100
-    # This basically truncates the entire available
-    # dataset to 10,000 articles per type
-    total_articles_per_type = 10_000
     print("Loading the HumanChatBotDataset...")
+
     raw_data = RawHumanChatBotData.from_csv(
-        "/home/cberruz/CS271/project_data/dataset.csv",
-        n_articles_per_type=total_articles_per_type
+        csv_path,
+        n_articles_per_type=n_articles_per_type
     )
 
-    articles_used_in_training = 10_000
-
     word2vec_gpt = train_word2vec_on_article_type(
-        raw_data, "gpt", n_articles=articles_used_in_training, vector_size=vector_size)
+        raw_data, "gpt", vector_size=vector_size)
     word2vec_human = train_word2vec_on_article_type(
-        raw_data, "human", n_articles=articles_used_in_training, vector_size=vector_size)
+        raw_data, "human", vector_size=vector_size)
 
     embedders_per_type = {
         "gpt": Word2VecEmbedder(word2vec_gpt),
@@ -98,4 +97,16 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--csv-path", type=str, default="/home/cberruz/CS271/project_data/dataset.csv", help="The path to the dataset")
+    parser.add_argument(
+        "--n-articles", type=int, default=None,
+        help="Use this if you want to truncate the dataset to a maximum number of articles per type."
+    )
+
+    args = parser.parse_args()
+    main(
+        args.csv_path,
+        args.n_articles
+    )
