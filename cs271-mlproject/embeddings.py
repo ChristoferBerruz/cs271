@@ -60,6 +60,7 @@ class Word2VecEmbedder(ArticleEmbedder):
             torch.Tensor: a numerical representation of the article
         """
         average_vector = np.zeros(self.vector_size, dtype=np.float32)
+        article = article.replace("\n", " ")
         for i in sent_tokenize(article):
             n = 0
             for j in word_tokenize(i):
