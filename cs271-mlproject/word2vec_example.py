@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import DataLoader, random_split
 import nltk
 nltk.download('punkt_tab')
+nltk.download('punkt')
 
 
 def train_word2vec_on_article_type(
