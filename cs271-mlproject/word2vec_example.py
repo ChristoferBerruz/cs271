@@ -62,8 +62,11 @@ def main(csv_path: str, n_articles_per_type: Optional[int] = None):
 
     word2vec_gpt = train_word2vec_on_article_type(
         raw_data, "gpt", vector_size=vector_size)
+    # save them, so we can reuse them later.
+    word2vec_gpt.save("word2vec_gpt.model")
     word2vec_human = train_word2vec_on_article_type(
         raw_data, "human", vector_size=vector_size)
+    word2vec_human.save("word2vec_human.model")
 
     embedders_per_type = {
         "gpt": Word2VecEmbedder(word2vec_gpt),
@@ -73,9 +76,6 @@ def main(csv_path: str, n_articles_per_type: Optional[int] = None):
         "gpt": 0,
         "human": 1
     }
-    # save them, so we can reuse them later.
-    word2vec_gpt.save("word2vec_gpt.model")
-    word2vec_human.save("word2vec_human.model")
 
     dataset = HumanChatBotDataset(
         raw_data.data, embedders_per_type, article_type_to_class_num
