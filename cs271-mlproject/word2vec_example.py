@@ -4,6 +4,8 @@ from data_processing import RawHumanChatBotData, HumanChatBotDataset, ReusableGe
 from nltk.tokenize import sent_tokenize, word_tokenize
 from gensim.models import Word2Vec
 
+import constants as pc
+
 
 import argparse
 from typing import Optional, Iterable
@@ -12,9 +14,8 @@ from torch.utils.data import DataLoader, random_split
 import nltk
 
 
-def train_word2vec_on_article_type(
+def train_word2vec_on_raw_data(
     dataset: RawHumanChatBotData,
-    article_type: str,
     vector_size: int = 100,
     min_count: int = 1,
     window=5
@@ -22,10 +23,10 @@ def train_word2vec_on_article_type(
     """
     Train a Word2Vec model on the entire dataset.
     """
-    print(f"Training Word2Vec model on {article_type} articles...")
+    print(f"Training Word2Vec model on {dataset.total_articles} articles...")
 
     def get_articles_wrapper():
-        return dataset.get_articles(article_type)
+        return dataset.get_articles()
 
     articles = ReusableGenerator(get_articles_wrapper)
 
@@ -44,50 +45,49 @@ def train_word2vec_on_article_type(
     return model
 
 
-def main(csv_path: str, n_articles_per_type: Optional[int] = None):
+def main(csv_path: str, n_rows: Optional[int] = None):
     """A simple example of how to use Word2Vec with a Logistic Regression model
     for classification.
     """
     print(
-        f"Word2vec training using data from {csv_path} and n_articles {n_articles_per_type}")
+        f"Word2vec training using data from {csv_path} and n_articles {n_rows}")
     nltk.download('punkt_tab')
     nltk.download('punkt')
     vector_size = 100
     print("Loading the HumanChatBotDataset...")
 
-    raw_data = RawHumanChatBotData.from_csv(
-        csv_path,
-        n_articles_per_type=n_articles_per_type
+    train_data, test_data = RawHumanChatBotData.train_test_split(
+        path=csv_path,
+        seed=pc.R_SEED,
+        n_rows=n_rows,
+        train_percent=pc.TRAIN_PERCENT
     )
 
-    word2vec_gpt = train_word2vec_on_article_type(
-        raw_data, "gpt", vector_size=vector_size)
-    # save them, so we can reuse them later.
-    word2vec_gpt.save("word2vec_gpt.model")
-    word2vec_human = train_word2vec_on_article_type(
-        raw_data, "human", vector_size=vector_size)
-    word2vec_human.save("word2vec_human.model")
+    word2vec = train_word2vec_on_raw_data(
+        train_data,
+        vector_size=vector_size,
+        min_count=1,
+        window=5
+    )
+    word2vec.save("word2vec.model")
+    embedder = Word2VecEmbedder(word2vec)
 
-    embedders_per_type = {
-        "gpt": Word2VecEmbedder(word2vec_gpt),
-        "human": Word2VecEmbedder(word2vec_human)
-    }
-    article_type_to_class_num = {
+    article_to_class_num = {
         "gpt": 0,
         "human": 1
     }
 
-    dataset = HumanChatBotDataset(
-        raw_data.data, embedders_per_type, article_type_to_class_num
+    train_dataset = HumanChatBotDataset.from_raw_data(
+        train_data, embedder=embedder, article_type_to_classnum=article_to_class_num
     )
-    # pin the seed so we can reproduce the results
-    ran = torch.Generator().manual_seed(42)
-    train_dataset, test_dataset = random_split(dataset, [0.8, 0.2], ran)
+    test_dataset = HumanChatBotDataset.from_raw_data(
+        test_data, embedder=embedder, article_type_to_classnum=article_to_class_num
+    )
 
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
     # create the model
-    model = LogisticRegression(vector_size, len(article_type_to_class_num))
+    model = LogisticRegression(vector_size, len(article_to_class_num))
     model.train(
         train_loader,
         test_loader,
