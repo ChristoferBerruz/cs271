@@ -11,12 +11,13 @@ This module contains all classes and functions related to article embeddings.
 from abc import ABC, abstractmethod
 import torch
 
-from nltk.tokenize import sent_tokenize, word_tokenize
 from gensim.models import Word2Vec
 
 import numpy as np
 
 from dataclasses import dataclass, field
+
+from text_helpers import sentence_word_tokenizer
 
 
 class ArticleEmbedder(ABC):
@@ -60,16 +61,11 @@ class Word2VecEmbedder(ArticleEmbedder):
             torch.Tensor: a numerical representation of the article
         """
         average_vector = np.zeros(self.vector_size, dtype=np.float32)
-        article = article.replace("\n", " ")
         n_words = 0
-        for i in sent_tokenize(article):
-            for j in word_tokenize(i):
-                k = j.lower()
-                if k not in self.model.wv:
-                    word_vector = np.zeros(self.vector_size, dtype=np.float32)
-                else:
-                    word_vector = self.model.wv[k]
-                average_vector += word_vector
-                n_words += 1
+        for sentence in sentence_word_tokenizer(article):
+            n_words += len(sentence)
+            for word in sentence:
+                if word in self.model.wv:
+                    average_vector += self.model.wv[word]
         average_vector = average_vector / n_words
         return torch.from_numpy(average_vector)
