@@ -61,8 +61,8 @@ class Word2VecEmbedder(ArticleEmbedder):
         """
         average_vector = np.zeros(self.vector_size, dtype=np.float32)
         article = article.replace("\n", " ")
+        n_words = 0
         for i in sent_tokenize(article):
-            n = 0
             for j in word_tokenize(i):
                 k = j.lower()
                 if k not in self.model.wv:
@@ -70,6 +70,6 @@ class Word2VecEmbedder(ArticleEmbedder):
                 else:
                     word_vector = self.model.wv[k]
                 average_vector += word_vector
-                n += 1
-            average_vector = average_vector / n
+                n_words += 1
+        average_vector = average_vector / n_words
         return torch.from_numpy(average_vector)
