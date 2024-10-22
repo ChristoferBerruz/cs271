@@ -36,8 +36,10 @@ def download_nltk_data():
     """
     Download the necessary NLTK data.
     """
+    print("Downloading NLTK data...")
     nltk.download('punkt_tab')
     nltk.download('punkt')
+    print("Download complete.")
 
 
 requires_nltk_data = run_before_decorator_factory(download_nltk_data)
