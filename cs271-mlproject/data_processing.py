@@ -1,15 +1,9 @@
 import polars as pl
-from typing import Optional, Tuple, List, Dict, Set, Generator, Callable
+from typing import Optional, Tuple, Set, Generator, Callable
 
 from dataclasses import dataclass, field
 
-from torch.utils.data import Dataset
-
-from embeddings import ArticleEmbedder
-
 import constants as pc
-
-import numpy as np
 
 
 @dataclass
@@ -140,93 +134,3 @@ class ReusableGenerator:
 
     def __iter__(self):
         return self.generator_func()
-
-
-@dataclass
-class HumanChatBotDataset(Dataset):
-    """
-    A PyTorch Dataset class for the Human Chat Bot dataset.
-    Use this class when you want to load all the data and embeddings
-    at once.
-    """
-    embeddings: List[np.ndarray] = field(repr=False)
-    labels: List[int] = field(repr=False)
-
-    @classmethod
-    def from_raw_data(
-        cls,
-        raw_data: RawHumanChatBotData,
-        embedder: ArticleEmbedder,
-        article_type_to_classnum: Dict[str, int]
-    ) -> "HumanChatBotDataset":
-        print(
-            f"Generating embeddings for the dataset {raw_data} using embedder {embedder.__class__.__name__}")
-        embeddings = []
-        labels = []
-        for row in raw_data.data.iter_rows(named=True):
-            text = row["text"]
-            article_type = row["type"]
-            label = article_type_to_classnum[article_type]
-            embeddings.append(embedder.embed(text))
-            labels.append(label)
-        return cls(embeddings, labels)
-
-    def __len__(self) -> int:
-        return len(self.embeddings)
-
-    def __getitem__(self, idx: int) -> Tuple[np.ndarray, int]:
-        return self.embeddings[idx], self.labels[idx]
-
-
-@dataclass
-class LazyHumanChatBotDataset(Dataset):
-    """
-    A PyTorch Dataset class for the Human Chat Bot dataset.
-    Use this class when you want to lazily embed
-    data on the fly.
-
-    Useful when there's a lot of data and creating all the 
-    embeddings at once would be too memory intensive.
-    """
-    data: pl.DataFrame
-    embedder: ArticleEmbedder = field(repr=False)
-    article_type_to_classnum: Dict[str, int]
-
-    def __post_init__(self):
-        # assert that all types in the dataset
-        # have a corresponding article type mapping
-        types_in_dataset = self.data["type"].unique().to_list()
-        missing_types = set(types_in_dataset) - \
-            set(self.article_type_to_classnum.keys())
-        if missing_types:
-            raise ValueError(
-                f"Missing classnumber for types: {missing_types}")
-
-    def get_class_num(self, article_type: str) -> int:
-        """
-        Get the class number for the given article type.
-        """
-        return self.article_type_to_classnum[article_type]
-
-    @classmethod
-    def from_raw_data(
-        cls,
-        raw_data: RawHumanChatBotData,
-        embedder: ArticleEmbedder,
-        article_type_to_classnum: Dict[str, int]
-    ) -> "LazyHumanChatBotDataset":
-        return cls(
-            raw_data.data,
-            embedder,
-            article_type_to_classnum
-        )
-
-    def __len__(self) -> int:
-        return len(self.data)
-
-    def __getitem__(self, idx: int) -> Tuple[np.ndarray, int]:
-        row = self.data[idx]
-        text = row["text"].item()
-        article_type = row["type"].item()
-        label = self.get_class_num(article_type)
-        return self.embedder.embed(text), label
