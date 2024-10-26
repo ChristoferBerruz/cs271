@@ -18,9 +18,9 @@ import numpy as np
 
 from dataclasses import dataclass, field
 
-from text_helpers import sentence_word_tokenizer
+from mlproject.text_helpers import sentence_word_tokenizer
 
-from data_processing import RawHumanChatBotData, ReusableGenerator
+from mlproject.data_processing import RawHumanChatBotData, ReusableGenerator
 
 from typing import Dict, ClassVar
 

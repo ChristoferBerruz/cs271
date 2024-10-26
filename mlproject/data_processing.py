@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Set, Generator, Callable
 
 from dataclasses import dataclass, field
 
-import constants as pc
+from mlproject import constants as pc
 
 
 @dataclass

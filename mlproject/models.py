@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 
 from abc import ABC, abstractmethod
 
-from datasets import HumanChatBotDataset
+from mlproject.datasets import HumanChatBotDataset
 
 from dataclasses import dataclass
 
@@ -221,3 +221,24 @@ class SimpleMLP(NNBaseModel):
             testing_loss = test_losses[-1]
             testing_accuracy = test_accuracies[-1]
             print(f"Epoch: {epoch}, Training Loss: {training_loss}, Training Accuracy: {training_accuracy*100:.2f}%, Testing Loss: {testing_loss}, Testing Accuracy: {testing_accuracy*100:.2f}%")
+
+
+class CNN1D(NNBaseModel):
+
+    def __init__(self, input_dim: int, output_dim: int):
+        super(CNN1D, self).__init__(input_dim, output_dim)
+        self.conv1 = torch.nn.Conv1d(
+            in_channels=input_dim, out_channels=256, kernel_size=3)
+        self.conv2 = torch.nn.Conv1d(
+            in_channels=256, out_channels=256, kernel_size=3)
+        self.fc1 = torch.nn.Linear(256, 128)
+        self.fc2 = torch.nn.Linear(128, output_dim)
+
+    def forward(self, x):
+        x = torch.relu(self.conv1(x))
+        x = torch.relu(self.conv2(x))
+        x = torch.max_pool1d(x, kernel_size=2)
+        x = torch.flatten(x, 1)
+        x = torch.relu(self.fc1(x))
+        x = torch.sigmoid(self.fc2(x))
+        return x

@@ -11,8 +11,8 @@ import numpy as np
 
 import pickle
 
-from data_processing import RawHumanChatBotData
-from embeddings import ArticleEmbedder
+from mlproject.data_processing import RawHumanChatBotData
+from mlproject.embeddings import ArticleEmbedder
 
 
 @dataclass

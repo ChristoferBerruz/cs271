@@ -3,16 +3,16 @@ import click
 from functools import wraps
 
 from typing import Optional
-from data_processing import RawHumanChatBotData
+from mlproject.data_processing import RawHumanChatBotData
 
-from datasets import HumanChatBotDataset
+from mlproject.datasets import HumanChatBotDataset
 
-from embeddings import ArticleEmbedder
+from mlproject.embeddings import ArticleEmbedder
 
 from models import NNBaseModel
 from pathlib import Path
 
-import constants as pc
+from mlproject import constants as pc
 
 
 @click.group()
