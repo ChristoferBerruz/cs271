@@ -9,7 +9,7 @@ from mlproject.datasets import HumanChatBotDataset
 
 from mlproject.embeddings import ArticleEmbedder
 
-from models import NNBaseModel
+from mlproject.models import NNBaseModel
 from pathlib import Path
 
 from mlproject import constants as pc
