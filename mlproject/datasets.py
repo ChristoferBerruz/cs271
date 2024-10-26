@@ -96,6 +96,28 @@ class HumanChatBotDataset(Dataset):
 
 
 @dataclass
+class TwoDImagesDataset(Dataset):
+    """Simple Dataset Wrapper that resizes
+    the embedded vectors into a square image
+    shape
+
+    TODO: Consider experimenting with making
+    images out of the embedding vectors.
+    """
+
+    dataset: HumanChatBotDataset
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+        embedding, label = self.dataset.__getitem__(idx)
+        v_size = len(embedding)
+        n = int(v_size**0.5)
+        return embedding.reshape((1, n, n)), label
+
+
+@dataclass
 class LazyHumanChatBotDataset(Dataset):
     """
     A PyTorch Dataset class for the Human Chat Bot dataset.
