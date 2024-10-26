@@ -25,17 +25,27 @@ class HumanChatBotDataset(Dataset):
     embeddings: List[torch.Tensor] = field(repr=False)
     labels: List[int] = field(repr=False)
 
+    @staticmethod
+    def find_classnum_mapping(data: pl.DataFrame) -> Dict[str, int]:
+        """
+        Find the mapping of article types to class numbers.
+        """
+        article_types = data["type"].unique().to_list()
+        # sort them, so we always guarantee the same mapping
+        article_types.sort()
+        return {article_type: i for i, article_type in enumerate(article_types)}
+
     @classmethod
     def from_raw_data(
         cls,
         raw_data: RawHumanChatBotData,
-        embedder: ArticleEmbedder,
-        article_type_to_classnum: Dict[str, int]
+        embedder: ArticleEmbedder
     ) -> "HumanChatBotDataset":
         print(
             f"Generating embeddings for the dataset {raw_data} using embedder {embedder.__class__.__name__}")
         embeddings = []
         labels = []
+        article_type_to_classnum = cls.find_classnum_mapping(raw_data.data)
         for row in raw_data.data.iter_rows(named=True):
             text = row["text"]
             article_type = row["type"]
@@ -49,18 +59,15 @@ class HumanChatBotDataset(Dataset):
         cls,
         train_data: RawHumanChatBotData,
         test_data: RawHumanChatBotData,
-        embedder: ArticleEmbedder,
-        article_type_to_classnum: Dict[str, int]
+        embedder: ArticleEmbedder
     ) -> Tuple["HumanChatBotDataset", "HumanChatBotDataset"]:
         train = cls.from_raw_data(
             train_data,
-            embedder,
-            article_type_to_classnum
+            embedder
         )
         test = cls.from_raw_data(
             test_data,
-            embedder,
-            article_type_to_classnum
+            embedder
         )
         return train, test
 
