@@ -26,6 +26,9 @@ from typing import Dict, ClassVar
 
 import pickle
 
+from torch.optim import adam
+from InferSent.models import InferSent
+
 
 class ArticleEmbedder(ABC):
     """
@@ -139,3 +142,62 @@ class CBOWWord2Vec(ArticleEmbedder):
             window=5
         )
         return cls(word2vec, vector_size)
+
+@dataclass
+class InferSentEmbedder(ArticleEmbedder):
+    """
+    A class to adapt the text to the InferSent model
+    """
+    model: InferSent = field(repr=False)
+    vector_size: int
+
+    def __post_init__(self):
+        # ensure the model is in evaluation mode
+        self.model = self.model.eval()
+
+    def embed(self, article: str) -> torch.Tensor:
+        """
+        Embed the article into a single fixed-length vector
+        by calculating the average of the InferSent embeddings for all sentences.
+
+        Args:
+            article (str): the article text
+
+        Returns:
+            torch.Tensor: a numerical representation of the article
+        """
+        sentence_embeddings = []
+        for sentence in sentence_word_tokenizer(article):
+            embeddings = self.model.encode([sentence], tokenize=True)
+            sentence_embeddings.append(embeddings[0])
+        average_embedding = np.mean(sentence_embeddings, axis=0)
+        return torch.from_numpy(average_embedding)
+
+    @classmethod
+    def by_training_on_raw_data(
+            cls,
+            training_data: "RawHumanChatBotData",
+            vector_size: int = 4096  # Default vector size for InferSent
+    ) -> "InferSentEmbedder":
+        # Load the InferSent model
+        model_version = 2  # Choose version 1 or 2 based on your requirements
+        MODEL_PATH = 'InferSent/encoder/infersent2.pkl'
+        W2V_PATH = 'fastText/crawl-300d-2M.vec'  # Path to the word vectors for InferSent
+
+        params_model = {
+            'bsize': 64, 'word_emb_dim': 300,
+            'enc_lstm_dim': vector_size, 'pool_type': 'max',
+            'dpout_model': 0.0, 'version': model_version
+        }
+        infersent = InferSent(params_model)
+        infersent.load_state_dict(torch.load(MODEL_PATH))
+        infersent.set_w2v_path(W2V_PATH)
+
+        # Build the vocabulary with the training data
+        sentences = [sentence for article in training_data.get_articles()
+                     for sentence in sentence_word_tokenizer(article)]
+        infersent.build_vocab(sentences, tokenize=True)
+
+        # Return the initialized InferSentEmbedder
+        return cls(infersent, vector_size)
+
