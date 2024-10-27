@@ -8,7 +8,6 @@ to define article embeddings that we can use to train our models.
 
 This module contains all classes and functions related to article embeddings.
 """
-import os
 from abc import ABC, abstractmethod
 import torch
 
@@ -26,7 +25,6 @@ from typing import Dict, ClassVar
 
 import pickle
 
-from torch.optim import adam
 from InferSent.models import InferSent
 
 
@@ -181,8 +179,8 @@ class InferSentEmbedder(ArticleEmbedder):
     ) -> "InferSentEmbedder":
         # Load the InferSent model
         model_version = 2  # Choose version 1 or 2 based on your requirements
-        MODEL_PATH = 'InferSent/encoder/infersent2.pkl'
-        W2V_PATH = 'fastText/crawl-300d-2M.vec'  # Path to the word vectors for InferSent
+        MODEL_PATH = 'InferSent/infersent2.pkl'
+        W2V_PATH = 'InferSent/crawl-300d-2M.vec'  # Path to the word vectors for InferSent
 
         params_model = {
             'bsize': 64, 'word_emb_dim': 300,
