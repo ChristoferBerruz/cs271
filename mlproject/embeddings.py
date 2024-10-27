@@ -26,6 +26,7 @@ from typing import Dict, ClassVar
 import pickle
 
 import tensorflow_hub as hub
+from sentence_transformers import SentenceTransformer
 
 
 
@@ -241,4 +242,47 @@ class USEEmbedder(ArticleEmbedder):
             vector_size: int = 512  # Default embedding size for USE
     ) -> "USEEmbedder":
         # Initialize the USEEmbedder without any training (pre-trained model)
+        return cls(model=None, vector_size=vector_size)
+
+@dataclass
+class SBERTEmbedder(ArticleEmbedder):
+    """
+    A class to generate embeddings using Sentence-BERT (SBERT).
+    """
+    model: SentenceTransformer = field(repr=False)
+    vector_size: int
+
+    def __post_init__(self):
+        # Load the SBERT model if not already loaded
+        if not hasattr(self, 'model') or self.model is None:
+            print("Loading Sentence-BERT model...")
+            self.model = SentenceTransformer('all-MiniLM-L6-v2')
+            print("SBERT model loaded.")
+
+    def embed(self, article: str) -> torch.Tensor:
+        """
+        Embed the article into a single fixed-length vector
+        by calculating the average of the SBERT embeddings for all sentences.
+
+        Args:
+            article (str): the article text
+
+        Returns:
+            torch.Tensor: a numerical representation of the article
+        """
+        # Tokenize the article into sentences
+        sentences = [" ".join(sentence) for sentence in sentence_word_tokenizer(article)]
+        # Generate SBERT embeddings for all sentences
+        sentence_embeddings = self.model.encode(sentences, convert_to_numpy=True)
+        # Calculate the average embedding across all sentence embeddings
+        average_embedding = np.mean(sentence_embeddings, axis=0)
+        return torch.from_numpy(average_embedding)
+
+    @classmethod
+    def by_training_on_raw_data(
+        cls,
+        training_data: "RawHumanChatBotData",
+        vector_size: int = 384  # Default embedding size for SBERT 'all-MiniLM-L6-v2'
+    ) -> "SBERTEmbedder":
+        # Initialize the SBERTEmbedder without any additional training (pre-trained model)
         return cls(model=None, vector_size=vector_size)
