@@ -25,7 +25,8 @@ from typing import Dict, ClassVar
 
 import pickle
 
-from InferSent.models import InferSent
+import tensorflow_hub as hub
+
 
 
 class ArticleEmbedder(ABC):
@@ -199,3 +200,45 @@ class InferSentEmbedder(ArticleEmbedder):
         # Return the initialized InferSentEmbedder
         return cls(infersent, vector_size)
 
+@dataclass
+class USEEmbedder(ArticleEmbedder):
+    """
+        A class to generate embeddings using the Universal Sentence Encoder (USE).
+        """
+    model: hub.KerasLayer = field(repr=False)
+    vector_size: int
+
+    def __post_init__(self):
+        # Load the USE model from TensorFlow Hub
+        if not hasattr(self, 'model') or self.model is None:
+            print("Loading Universal Sentence Encoder...")
+            self.model = hub.load("https://tfhub.dev/google/universal-sentence-encoder/4")
+            print("USE model loaded.")
+
+    def embed(self, article: str) -> torch.Tensor:
+        """
+        Embed the article into a single fixed-length vector
+        by calculating the average of the USE embeddings for all sentences.
+
+        Args:
+            article (str): the article text
+
+        Returns:
+            torch.Tensor: a numerical representation of the article
+        """
+        # Tokenize the article into sentences
+        sentences = [" ".join(sentence) for sentence in sentence_word_tokenizer(article)]
+        # Generate USE embeddings for all sentences
+        sentence_embeddings = self.model(sentences).numpy()
+        # Calculate the average embedding across all sentence embeddings
+        average_embedding = np.mean(sentence_embeddings, axis=0)
+        return torch.from_numpy(average_embedding)
+
+    @classmethod
+    def by_training_on_raw_data(
+            cls,
+            training_data: "RawHumanChatBotData",
+            vector_size: int = 512  # Default embedding size for USE
+    ) -> "USEEmbedder":
+        # Initialize the USEEmbedder without any training (pre-trained model)
+        return cls(model=None, vector_size=vector_size)
