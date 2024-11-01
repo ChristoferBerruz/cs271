@@ -22,8 +22,7 @@ class HumanChatBotDataset(Dataset):
     Use this class when you want to load all the data and embeddings
     at once.
     """
-    embeddings: List[torch.Tensor] = field(repr=False)
-    labels: List[int] = field(repr=False)
+    data: pl.DataFrame
 
     @staticmethod
     def find_classnum_mapping(data: pl.DataFrame) -> Dict[str, int]:
@@ -43,16 +42,31 @@ class HumanChatBotDataset(Dataset):
     ) -> "HumanChatBotDataset":
         print(
             f"Generating embeddings for the dataset {raw_data} using embedder {embedder.__class__.__name__}")
-        embeddings = []
-        labels = []
         article_type_to_classnum = cls.find_classnum_mapping(raw_data.data)
+        all_tensors = []
+        all_labels = []
+        all_types = []
         for row in raw_data.data.iter_rows(named=True):
             text = row["text"]
             article_type = row["type"]
             label = article_type_to_classnum[article_type]
-            embeddings.append(embedder.embed(text))
-            labels.append(label)
-        return cls(embeddings, labels)
+            all_tensors.append(embedder.embed(text))
+            all_labels.append(label)
+            all_types.append(article_type)
+        tensors_in_stack = torch.stack(all_tensors)
+        samples, nfeatures = tensors_in_stack.shape
+        assert samples == len(all_tensors)
+        schema = [
+            "f{}".format(i) for i in range(nfeatures)
+        ]
+        data = pl.DataFrame(
+            {
+                "type": all_types,
+                "label": all_labels,
+                **{schema[i]: tensors_in_stack[:, i].numpy() for i in range(nfeatures)}
+            }
+        )
+        return cls(data)
 
     @classmethod
     def from_train_test_raw_data(
@@ -73,26 +87,43 @@ class HumanChatBotDataset(Dataset):
 
     @classmethod
     def load(cls, load_path: str) -> "HumanChatBotDataset":
-        with open(load_path, "rb") as f:
-            return pickle.load(f)
+        """Reads the dataset from the csv file
+
+        Args:
+            load_path (str): the path of the csv file
+
+        Returns:
+            HumanChatBotDataset: The dataset
+        """
+        data = pl.read_csv(load_path)
+        return cls(data)
 
     def save(self, save_path: str):
-        with open(save_path, "wb") as f:
-            pickle.dump(self, f)
+        """Save the dataset to a csv file
+
+        Args:
+            save_path (str): the path to save the dataset
+        """
+        self.data.write_csv(save_path)
 
     @property
     def embedding_size(self) -> int:
-        return len(self.embeddings[0])
+        # find the number of columns in the dataframe - 2
+        # because the first two columns are the type and the label
+        return len(self.data.columns) - 2
 
     @property
     def number_of_classes(self) -> int:
-        return len(set(self.labels))
+        return len(self.data["type"].unique().to_list())
 
     def __len__(self) -> int:
-        return len(self.embeddings)
+        return len(self.data)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        return self.embeddings[idx], self.labels[idx]
+        tensor_values = self.data.row(idx)[2:]
+        embedding = torch.tensor(tensor_values, dtype=torch.float32)
+        label = self.data[idx]["label"].item()
+        return embedding, label
 
 
 @dataclass
