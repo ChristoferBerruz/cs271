@@ -137,7 +137,8 @@ def embed_raw_data(
     train_dataset, test_dataset = HumanChatBotDataset.from_train_test_raw_data(
         train_data=train_data,
         test_data=test_data,
-        embedder=embedder
+        embedder=embedder,
+        article_type_to_classnum=pc.ARTICLE_TYPES_TO_CLASSNUM
     )
     train_file_path = Path(train_file_path).resolve().as_posix()
     test_file_path = Path(test_file_path).resolve().as_posix()
