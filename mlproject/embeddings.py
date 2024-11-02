@@ -31,7 +31,7 @@ from sentence_transformers import SentenceTransformer
 from InferSent.models import InferSent
 
 
-InferSent = "InferSent"  # Placeholder for InferSent type hinting
+#InferSent = "InferSent"  # Placeholder for InferSent type hinting
 
 
 class ArticleEmbedder(ABC):
