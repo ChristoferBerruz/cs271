@@ -182,20 +182,17 @@ class InferSentEmbedder(ArticleEmbedder):
     def by_training_on_raw_data(
             cls,
             training_data: "RawHumanChatBotData",
-            vector_size: int = 4096  # Default vector size for Infersent.model
+            vector_size: int = 4096  # Default vector size for Infersent
     ) -> "InferSentEmbedder":
-        # Load the Infersent.model model
-        model_version = 2  # Choose version 1 or 2 based on your requirements
+        # Pre trained InferSent model
         MODEL_PATH = 'Infersent.model/infersent2.pkl'
-        W2V_PATH = 'Infersent.model/crawl-300d-2M.vec'  # Path to the word vectors for Infersent.model
-        MODEL_PATH = 'InferSent/infersent2.pkl'
         # Path to the word vectors for InferSent
-        W2V_PATH = 'InferSent/crawl-300d-2M.vec'
+        W2V_PATH = 'Infersent.model/crawl-300d-2M.vec'
 
         params_model = {
             'bsize': 64, 'word_emb_dim': 300,
             'enc_lstm_dim': vector_size, 'pool_type': 'max',
-            'dpout_model': 0.0, 'version': model_version
+            'dpout_model': 0.0, 'version': 2
         }
         infersent = InferSent(params_model)
         infersent.load_state_dict(torch.load(MODEL_PATH))
