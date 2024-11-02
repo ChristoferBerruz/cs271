@@ -28,6 +28,8 @@ import pickle
 import tensorflow_hub as hub
 from sentence_transformers import SentenceTransformer
 
+from InferSent.models import InferSent
+
 
 
 class ArticleEmbedder(ABC):
@@ -146,7 +148,7 @@ class CBOWWord2Vec(ArticleEmbedder):
 @dataclass
 class InferSentEmbedder(ArticleEmbedder):
     """
-    A class to adapt the text to the InferSent model
+    A class to adapt the text to the Infersent.model model
     """
     model: InferSent = field(repr=False)
     vector_size: int
@@ -158,7 +160,7 @@ class InferSentEmbedder(ArticleEmbedder):
     def embed(self, article: str) -> torch.Tensor:
         """
         Embed the article into a single fixed-length vector
-        by calculating the average of the InferSent embeddings for all sentences.
+        by calculating the average of the Infersent.model embeddings for all sentences.
 
         Args:
             article (str): the article text
@@ -177,12 +179,12 @@ class InferSentEmbedder(ArticleEmbedder):
     def by_training_on_raw_data(
             cls,
             training_data: "RawHumanChatBotData",
-            vector_size: int = 4096  # Default vector size for InferSent
+            vector_size: int = 4096  # Default vector size for Infersent.model
     ) -> "InferSentEmbedder":
-        # Load the InferSent model
+        # Load the Infersent.model model
         model_version = 2  # Choose version 1 or 2 based on your requirements
-        MODEL_PATH = 'InferSent/infersent2.pkl'
-        W2V_PATH = 'InferSent/crawl-300d-2M.vec'  # Path to the word vectors for InferSent
+        MODEL_PATH = 'Infersent.model/infersent2.pkl'
+        W2V_PATH = 'Infersent.model/crawl-300d-2M.vec'  # Path to the word vectors for Infersent.model
 
         params_model = {
             'bsize': 64, 'word_emb_dim': 300,
@@ -211,7 +213,7 @@ class USEEmbedder(ArticleEmbedder):
 
     def __post_init__(self):
         # Load the USE model from TensorFlow Hub
-        if not hasattr(self, 'model') or self.model is None:
+        if self.model is None:
             print("Loading Universal Sentence Encoder...")
             self.model = hub.load("https://tfhub.dev/google/universal-sentence-encoder/4")
             print("USE model loaded.")
@@ -235,6 +237,7 @@ class USEEmbedder(ArticleEmbedder):
         average_embedding = np.mean(sentence_embeddings, axis=0)
         return torch.from_numpy(average_embedding)
 
+    """
     @classmethod
     def by_training_on_raw_data(
             cls,
@@ -242,7 +245,7 @@ class USEEmbedder(ArticleEmbedder):
             vector_size: int = 512  # Default embedding size for USE
     ) -> "USEEmbedder":
         # Initialize the USEEmbedder without any training (pre-trained model)
-        return cls(model=None, vector_size=vector_size)
+        return cls(model=None, vector_size=vector_size)"""
 
 @dataclass
 class SBERTEmbedder(ArticleEmbedder):
@@ -278,6 +281,7 @@ class SBERTEmbedder(ArticleEmbedder):
         average_embedding = np.mean(sentence_embeddings, axis=0)
         return torch.from_numpy(average_embedding)
 
+    """
     @classmethod
     def by_training_on_raw_data(
         cls,
@@ -286,3 +290,4 @@ class SBERTEmbedder(ArticleEmbedder):
     ) -> "SBERTEmbedder":
         # Initialize the SBERTEmbedder without any additional training (pre-trained model)
         return cls(model=None, vector_size=vector_size)
+    """
