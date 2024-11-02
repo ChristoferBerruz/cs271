@@ -186,14 +186,11 @@ class InferSentEmbedder(ArticleEmbedder):
     ) -> "InferSentEmbedder":
         # Load the Infersent.model model
         model_version = 2  # Choose version 1 or 2 based on your requirements
-<<<<<<< HEAD
         MODEL_PATH = 'Infersent.model/infersent2.pkl'
         W2V_PATH = 'Infersent.model/crawl-300d-2M.vec'  # Path to the word vectors for Infersent.model
-=======
         MODEL_PATH = 'InferSent/infersent2.pkl'
         # Path to the word vectors for InferSent
         W2V_PATH = 'InferSent/crawl-300d-2M.vec'
->>>>>>> 81a3ea265e97566ed89f4242df371a4569f917ee
 
         params_model = {
             'bsize': 64, 'word_emb_dim': 300,
