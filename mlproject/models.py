@@ -161,6 +161,7 @@ class LogisticRegression(NNBaseModel):
                 train_loader,
                 test_loader,
                 criterion,
+                exp_result
             )
             training_loss = exp_result.training_loss
             training_accuracy = exp_result.training_accuracy
