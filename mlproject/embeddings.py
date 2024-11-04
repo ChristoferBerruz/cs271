@@ -10,6 +10,7 @@ This module contains all classes and functions related to article embeddings.
 """
 from abc import ABC, abstractmethod
 import torch
+from typing import Optional
 from gensim.models import Word2Vec
 import numpy as np
 from dataclasses import dataclass, field
@@ -149,100 +150,104 @@ class CBOWWord2Vec(ArticleEmbedder):
 @dataclass
 class InferSentEmbedder(ArticleEmbedder):
     """
+    A class to adapt the text to the Infersent model
     """
     model: InferSent = field(repr=False)
     vector_size: int
+    model_path: str = field(default="path/to/infersent.pkl")
+    w2v_path: str = field(default="path/to/word_vectors.txt")
 
     def __post_init__(self):
         # ensure the model is in evaluation mode
         if not hasattr(self, 'model') or self.model is None:
             print("Loading InferSent model...")
             model_version = 2
-            MODEL_PATH = 'Infersent.model/infersent2.pkl'
-            W2V_PATH = 'Infersent.model/crawl-300d-2M.vec'
-
-            vector_size = 4096
+            self.vector_size = 4096
             params_model = {
                 'bsize': 64,
                 'word_emb_dim': 300,
-                'enc_lstm_dim': 2048,  # Adjust based on InferSent requirements
+                'enc_lstm_dim': 2048,
                 'pool_type': 'max',
                 'dpout_model': 0.0,
                 'version': model_version
             }
             self.model = InferSent(params_model)
-            self.model.load_state_dict(torch.load(MODEL_PATH))
-            self.model.set_w2v_path(W2V_PATH)
+            self.model.load_state_dict(torch.load(self.model_path))
+            self.model.set_w2v_path(self.w2v_path)
             print("InferSent model loaded.")
             self.model = self.model.eval()
 
 
-def embed(self, article: str) -> torch.Tensor:
-    """
-    Embed the article into a single fixed-length vector
-    by calculating the average of the Infersent.model embeddings for all sentences.
+    def embed(self, article: str) -> torch.Tensor:
+        """
+        Embed the article into a single fixed-length vector
+        by calculating the average of the Infersent.model embeddings for all sentences.
 
-    Args:
-        article (str): the article text
+        Args:
+            article (str): the article text
 
-    Returns:
-        torch.Tensor: a numerical representation of the article
-    """
-    sentence_embeddings = []
-    for sentence in sentence_word_tokenizer(article):
-        embeddings = self.model.encode([sentence], tokenize=True)
-        sentence_embeddings.append(embeddings[0])
-    average_embedding = np.mean(sentence_embeddings, axis=0)
-    return torch.from_numpy(average_embedding)
-
-
-@classmethod
-def return_pretrained(
-        cls,
-        training_data: None,  # Default vector size for InferSent,
-        vector_size: int = 4096
-) -> "InferSentEmbedder":
-    """
-    Initializes an InferSentEmbedder using pre-trained weights without additional training.
-
-    Args:
-        training_data: Ignored in this case, as no training is performed.
-        vector_size: Embedding vector size (default 4096 for InferSent Version 2).
-
-    Returns:
-        An instance of InferSentEmbedder with pre-trained InferSent model.
-    """
-    # Instantiate the class without requiring training data
-    return cls(model=None, vector_size=vector_size)
+        Returns:
+            torch.Tensor: a numerical representation of the article
+        """
+        sentence_embeddings = []
+        for sentence in sentence_word_tokenizer(article):
+            embeddings = self.model.encode([sentence], tokenize=True)
+            sentence_embeddings.append(embeddings[0])
+        average_embedding = np.mean(sentence_embeddings, axis=0)
+        return torch.from_numpy(average_embedding)
 
 
-@classmethod
-def by_training_on_raw_data(
-        cls,
-        training_data: "RawHumanChatBotData",
-        vector_size: int = 4096  # Default vector size for Infersent
-) -> "InferSentEmbedder":
-    # Pre trained InferSent model
-    MODEL_PATH = 'Infersent/infersent2.pkl'
-    # Path to the word vectors for InferSent
-    W2V_PATH = 'Infersent/crawl-300d-2M.vec'
+    @classmethod
+    def return_pretrained(
+            cls,
+            training_data: None,  # Default vector size for InferSent,
+            vector_size: int = 4096,
+            model_path: str = "path/to/infersent.pkl",
+            w2v_path: str = "path/to/word_vectors.txt"
+    ) -> "InferSentEmbedder":
+        """
+        Initializes an InferSentEmbedder using pre-trained weights without additional training.
+        """
+        model_version = 2
+        params_model = {
+            'bsize': 64,
+            'word_emb_dim': 300,
+            'enc_lstm_dim': 2048,
+            'pool_type': 'max',
+            'dpout_model': 0.0,
+            'version': model_version
+        }
+        model = InferSent(params_model)
+        model.load_state_dict(torch.load(model_path))
+        model.set_w2v_path(w2v_path)
+        return cls(model=model, vector_size=vector_size, model_path=model_path, w2v_path=w2v_path)
 
-    params_model = {
-        'bsize': 64, 'word_emb_dim': 300,
-        'enc_lstm_dim': 2048, 'pool_type': 'max',
-        'dpout_model': 0.0, 'version': 2
-    }
-    infersent = InferSent(params_model)
-    infersent.load_state_dict(torch.load(MODEL_PATH), strict=False)
-    infersent.set_w2v_path(W2V_PATH)
 
-    # Build the vocabulary with the training data
-    sentences = [sentence for article in training_data.get_articles()
-                 for sentence in sentence_word_tokenizer(article)]
-    infersent.build_vocab(sentences, tokenize=True)
+    @classmethod
+    def by_training_on_raw_data(
+            cls,
+            training_data: "RawHumanChatBotData",
+            vector_size: int = 4096,  # Default vector size for Infersent,
+            model_path: str = "path/to/infersent.pkl",
+            w2v_path: str = "path/to/word_vectors.txt"
+    ) -> "InferSentEmbedder":
 
-    # Return the initialized InferSentEmbedder
-    return cls(infersent, vector_size)
+        params_model = {
+            'bsize': 64, 'word_emb_dim': 300,
+            'enc_lstm_dim': 2048, 'pool_type': 'max',
+            'dpout_model': 0.0, 'version': 2
+        }
+        infersent = InferSent(params_model)
+        infersent.load_state_dict(torch.load(model_path), strict=False)
+        infersent.set_w2v_path(w2v_path)
+
+        # Build the vocabulary with the training data
+        sentences = [sentence for article in training_data.get_articles()
+                     for sentence in sentence_word_tokenizer(article)]
+        infersent.build_vocab(sentences, tokenize=True)
+
+        # Return the initialized InferSentEmbedder
+        return cls(infersent, vector_size, model_path, w2v_path)
 
 
 @dataclass
@@ -282,24 +287,27 @@ class USEEmbedder(ArticleEmbedder):
         return torch.from_numpy(average_embedding)
 
 
-@classmethod
-def return_pretrained(
-        cls,
-        training_data: None,
-        vector_size: int = 512
-) -> "USEEmbedder":
-    # Instantiate the class without requiring training data
-    return cls(model=None, vector_size=vector_size)
+    @classmethod
+    def return_pretrained(
+            cls,
+            training_data: None,
+            vector_size: int = 512
+    ) -> "USEEmbedder":
+        # Instantiate the class without requiring training data
+        return cls(model=None, vector_size=vector_size)
 
 
-@classmethod
-def by_training_on_raw_data(
-        cls,
-        training_data: "RawHumanChatBotData",
-        vector_size: int = 512  # Default embedding size for USE
-) -> "USEEmbedder":
-    # Initialize the USEEmbedder without any training (pre-trained model)
-    return cls(model=None, vector_size=vector_size)
+    @classmethod
+    def by_training_on_raw_data(
+            cls,
+            training_data: "RawHumanChatBotData",
+            vector_size: int = 512  # Default embedding size for USE
+    ) -> "USEEmbedder":
+        # Initialize the USEEmbedder without any training (pre-trained model)
+        print("Loading Universal Sentence Encoder...")
+        model = hub.load(
+            "https://tfhub.dev/google/universal-sentence-encoder/4")
+        return cls(model=model, vector_size=vector_size)
 
 
 @dataclass

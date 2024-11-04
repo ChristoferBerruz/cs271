@@ -1,19 +1,12 @@
 import click
-
 from functools import wraps
-
 from typing import Optional
 from mlproject.data_processing import RawHumanChatBotData, WikihowSubset
-from click.core import batch
 from mlproject.datasets import HumanChatBotDataset
-
-from mlproject.embeddings import ArticleEmbedder
-
+from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder
 from mlproject.models import NNBaseModel
 from pathlib import Path
-
 from mlproject import constants as pc
-
 import pandas as pd
 import polars as pl
 
@@ -50,9 +43,7 @@ def read_raw_data_common_options(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
-
     return wrapper
-
 
 AVAILABLE_EMBEDDERS = list(ArticleEmbedder.registered_subclasses.keys())
 AVAILABLE_NN_MODELS = list(NNBaseModel.registry.keys())
@@ -87,10 +78,7 @@ def get_wikihow_subset(
         nrows: int,
         subset_path: Optional[str] = None
 ):
-    # Load the subset
     wikihow_subset = WikihowSubset.return_subset(csv_path=csv_path, seed=seed, n_rows=nrows)
-
-    # Save the subset if a path is provided
     if subset_path:
         print(f"Saving subset to {subset_path}")
         wikihow_subset.data.write_csv(subset_path)
@@ -157,11 +145,95 @@ def load_pretrained(
 
 @cli.command()
 @click.option(
-    "--csv-path",
-        type=click.Path(exists=True),
-        required=True,
-        help="The path to the raw data CSV file."
+    "--name",
+    type=click.Choice(AVAILABLE_EMBEDDERS),
+    default=InferSentEmbedder,
 )
+@click.option(
+    "--vector-size",
+    type=int,
+    default=100,
+    help="The size of the embedding vectors."
+)
+@click.option(
+    "--embedder-file",
+    type=click.Path(resolve_path=True),
+    help="The path to save the embedder file"
+)
+@click.option(
+    "--model-path",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to the InferSent model file"
+)
+@click.option(
+    "--w2v-path",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to the word vectors file"
+)
+def load_pretrained_infersent(name: str, vector_size: int, embedder_file: str, model_path: str, w2v_path: str):
+    train_data = None
+    embedder_klass = InferSentEmbedder
+    embedder = embedder_klass.return_pretrained(
+        training_data=train_data,
+        vector_size=vector_size,
+        model_path=model_path,
+        w2v_path=w2v_path
+    )
+    if not embedder_file:
+        embedder_file = Path(f"{name.lower()}.model").resolve().as_posix()
+    print(f"Saving model: {name!r} to location: {embedder_file}")
+    embedder.save(embedder_file)
+
+
+@cli.command()
+@click.option(
+    "--csv-path",
+    type=click.Path(exists=True),
+    required=True,
+    help="The path to the raw data CSV file."
+)
+@click.option(
+    "--embedder-file",
+    type=click.Path(exists=True, dir_okay=False),
+    required=True,
+    help="The path to the pre-trained embedder file."
+)
+@click.option(
+    "--embedded-path",
+    type=click.Path(resolve_path=True),
+    required=True,
+    help="The path to save the embedded text."
+)
+def embed_data(
+        csv_path: str,
+        embedder_file: str,
+        embedded_path: str
+):
+    # Load the embedder from the specified file
+    embedder = ArticleEmbedder.load(embedder_file)
+
+    row_numbers = []
+    embeddings = []
+    df = pd.read_csv(csv_path)
+
+    # Iterate through each row in the CSV and create embeddings
+    for index, row in df.iterrows():
+        text = row['text']
+        embedding = embedder.embed(text).numpy()
+        row_numbers.append(index)
+        embeddings.append(embedding)
+
+    # Save the embeddings to the specified path
+    embedded_df = pd.DataFrame({
+        'row_number': row_numbers,
+        'embedding': embeddings
+    })
+    embedded_df.to_csv(embedded_path, index=False)
+
+@cli.command()
+@read_raw_data_common_options
 @click.option(
     "--name",
     type=click.Choice(AVAILABLE_EMBEDDERS),
@@ -175,100 +247,41 @@ def load_pretrained(
 )
 @click.option(
     "--embedder-file",
-    type=click.Path(exists=True, dir_okay=False),
-    required=True
-)
-@click.option(
-    "--embedded-path",
     type=click.Path(resolve_path=True),
+    help="The path to save the embedder file"
+)
+@click.option(
+    "--model-path",
+    type=click.Path(exists=True),
     required=True,
-    help = "path to save embedded text"
-)
-def embed_data(
-    csv_path: str,
-    name: str,
-    vector_size: int,
-    embedded_path: str
-):
-    train_data = None
-    embedder_klass = ArticleEmbedder.registered_subclasses[name]
-    embedder = embedder_klass.return_pretrained(
-        training_data=train_data,
-        vector_size=vector_size)
-    row_numbers = []
-    embeddings = []
-    df = pd.read_csv(csv_path)
-    for index, row in df.iterrows():
-        text = row['text']
-        embedding = embedder.embed(text).numpy()
-        row_numbers.append(index)
-        embeddings.append(embedding)
-    embedded_df = pd.DataFrame({
-        'row_number' : row_numbers,
-        'embedding' : embeddings
-    })
-    embedded_df.to_csv(embedded_path)
-
-@cli.command()
-@click.option(
-    "--csv-path",
-        type=click.Path(exists=True),
-        required=True,
-        help="The path to the raw data CSV file."
+    help="Path to the InferSent model file"
 )
 @click.option(
-    "--name",
-    type=click.Choice(AVAILABLE_EMBEDDERS),
-    default=AVAILABLE_EMBEDDERS[0],
-)
-@click.option(
-    "--vector-size",
-    type=int,
-    default=100,
-    help="The size of the embedding vectors."
-)
-@click.option(
-    "--embedded-path",
-    type=click.Path(resolve_path=True),
+    "--w2v-path",
+    type=click.Path(exists=True),
     required=True,
-    help = "path to save embedded text"
+    help="Path to the word vectors file"
 )
-@click.option(
-    "--batch-size",
-    type=int,
-    default=1000,
-    help="Batch size"
-)
-def batched_embed_data(
-    csv_path: str,
-    name: str,
-    vector_size: int,
-    embedded_path: str,
-    batch_size: int
-):
-    train_data = None
-    embedder_klass = ArticleEmbedder.registered_subclasses[name]
-    embedder = embedder_klass.return_pretrained(
+def train_infersent_embedder(csv_path: str, n_rows: Optional[int], seed: int, train_percent: int, name: str, vector_size: int, embedder_file: str, model_path: str, w2v_path: str):
+    train_data, _ = RawHumanChatBotData.train_test_split(
+        path=csv_path,
+        seed=seed,
+        n_rows=n_rows,
+        train_percent=train_percent
+    )
+    embedder_klass = InferSentEmbedder
+    embedder = embedder_klass.by_training_on_raw_data(
         training_data=train_data,
-        vector_size=vector_size)
+        vector_size=vector_size,
+        model_path=model_path,
+        w2v_path=w2v_path
+    )
+    if not embedder_file:
+        embedder_file = Path(f"{name.lower()}.model").resolve().as_posix()
+    print(f"Saving model: {name!r} to location: {embedder_file}")
+    embedder.save(embedder_file)
 
-    row_numbers = []
-    embeddings = []
 
-    for chunk in pd.read_csv(csv_path, chunksize=batch_size):
-        batch_embeddings = []
-        batch_row_numbers = chunk.index.tolist()
-        articles = chunk['text'].fillna("").astype(str).tolist()  # Extract text data
-
-        for article in articles:
-            embedding = embedder.embed(article)
-            batch_embeddings.append(embedding)
-        embeddings.extend(batch_embeddings)
-        row_numbers.extend(batch_row_numbers)
-        #batch_df = pd.DataFrame({'row_number':batch_row_numbers, 'embeddings':batch_embeddings})
-        #batch_df.to_csv(embedded)
-    embeddings_df = pd.DataFrame({'row_number': row_numbers, 'embeddings': embeddings})
-    embeddings_df.to_csv(embedded_path)
 
 
 @cli.command()
