@@ -149,7 +149,6 @@ class CBOWWord2Vec(ArticleEmbedder):
 @dataclass
 class InferSentEmbedder(ArticleEmbedder):
     """
-    A class to adapt the text to the Infersent.model model
     """
     model: InferSent = field(repr=False)
     vector_size: int
