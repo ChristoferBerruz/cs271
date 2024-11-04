@@ -1,10 +1,8 @@
 import polars as pl
 from typing import Optional, Tuple, Set, Generator, Callable
-
+import pandas as pd
 from dataclasses import dataclass, field
-
 from mlproject import constants as pc
-
 
 @dataclass
 class RawHumanChatBotData:
@@ -122,6 +120,75 @@ class RawHumanChatBotData:
         for text in self.data["text"]:
             yield text
 
+@dataclass
+class WikihowSubset:
+    data: pl.DataFrame = field(repr=False)
+
+    @classmethod
+    def return_subset(
+            cls,
+            csv_path: str,
+            seed: Optional[int] = None,  # Default seed or pc.R_SEED if defined elsewhere
+            n_rows: Optional[int] = 200000
+    ) -> "WikihowSubset":
+        data = cls._get_subset(
+            csv_path=csv_path,
+            seed=seed,
+            n_rows=n_rows
+        )
+        return cls(data)
+
+    def generate_queries(self) -> pl.DataFrame:
+        print(self.data.columns)
+        query_added = self.data.with_columns(
+            pl.format(
+                "I am writing an article titled '{}' for a WikiHow page. Write a paragraph of length {} whose title is '{}' for the {} section of this article.",
+                pl.col("title"),
+                pl.col("length"),
+                pl.col("headline"),
+                pl.col("sectionLabel")
+            ).alias("query")
+        )
+        return query_added
+
+    @staticmethod
+    def _get_subset(
+            csv_path: str,
+            seed: Optional[int] = None,
+            n_rows: Optional[int] = 200000) -> pl.DataFrame:
+        print(f"Reading the dataset from {csv_path!r}")
+
+        # Select specific columns
+        selected_columns = ['title', 'headline', 'sectionLabel','text']
+
+        data = pl.read_csv(csv_path, columns=selected_columns)
+        data = data.drop_nulls(['text'])
+        # Add a column for the original row number
+        data = data.with_row_count("original_row_number")
+
+        # Convert to Pandas for calculating word count
+        df = data.to_pandas()
+
+        df['title'] = (
+            df['title']
+            .str.strip()  # Remove leading/trailing spaces
+            .replace(r'\s+', ' ', regex=True)  # Replace multiple spaces with a single space
+            .replace(r'\d+$', '', regex=True)  # Remove trailing numbers
+        )
+
+        df['word_count'] = df['text'].apply(lambda x: len(x.split()) if pd.notnull(x) else 0)
+        df = df[df['word_count'] >= 40]
+        df['length'] = df['word_count'].astype(str) + " words"
+        # Drop the 'text' column after calculating 'length'
+        df = df.drop(columns=['text', 'word_count'])
+
+        # Convert back to Polars
+        data = pl.from_pandas(df)
+
+        # Sample n_rows rows with a specified seed for reproducibility
+        print(f"Extracting subset of {n_rows} rows using seed {seed}.")
+        sampled_data = data.sample(n=n_rows, seed=seed)
+        return sampled_data
 
 @dataclass
 class ReusableGenerator:

@@ -3,8 +3,8 @@ import click
 from functools import wraps
 
 from typing import Optional
-from mlproject.data_processing import RawHumanChatBotData
-
+from mlproject.data_processing import RawHumanChatBotData, WikihowSubset
+from click.core import batch
 from mlproject.datasets import HumanChatBotDataset
 
 from mlproject.embeddings import ArticleEmbedder
@@ -14,6 +14,8 @@ from pathlib import Path
 
 from mlproject import constants as pc
 
+import pandas as pd
+import polars as pl
 
 @click.group()
 def cli():
@@ -54,6 +56,219 @@ def read_raw_data_common_options(func):
 
 AVAILABLE_EMBEDDERS = list(ArticleEmbedder.registered_subclasses.keys())
 AVAILABLE_NN_MODELS = list(NNBaseModel.registry.keys())
+
+@cli.command()
+@click.option(
+    "--csv-path",
+        type=click.Path(exists=True),
+        required=True,
+        help="The path to the raw data CSV file."
+)
+@click.option(
+    "--seed",
+    type=int,
+    default=pc.R_SEED,
+    help="The seed used for random subset."
+)
+@click.option(
+    "--nrows",
+    type=int,
+    default=200000,
+    help="The number of rows in subset."
+)
+@click.option(
+    "--subset-path",
+    type=click.Path(resolve_path=True),
+    help="The path to save the subset csv"
+)
+def get_wikihow_subset(
+        csv_path: str,
+        seed: int,
+        nrows: int,
+        subset_path: Optional[str] = None
+):
+    # Load the subset
+    wikihow_subset = WikihowSubset.return_subset(csv_path=csv_path, seed=seed, n_rows=nrows)
+
+    # Save the subset if a path is provided
+    if subset_path:
+        print(f"Saving subset to {subset_path}")
+        wikihow_subset.data.write_csv(subset_path)
+
+@cli.command()
+@click.option(
+    "--subset-path",
+    type=click.Path(resolve_path=True),
+    help="The path to save the subset csv"
+)
+@click.option(
+    "--queries-path",
+    type=click.Path(resolve_path=True),
+    help="The path to save the generated queries CSV."
+)
+def get_queries(
+    subset_path: Optional[str] = None,
+    queries_path: Optional[str] = None
+):
+    wikihow_subset = pl.read_csv(subset_path)
+    data = WikihowSubset(wikihow_subset)
+    # Generate queries
+    queries_df = data.generate_queries()
+
+    # Save the queries if a path is provided
+    if queries_path:
+        print(f"Saving queries to {queries_path}")
+        queries_df.select("query").write_csv(queries_path)
+    else:
+        print("Generated queries:")
+        print(queries_df.select("query"))
+
+@cli.command()
+@click.option(
+    "--name",
+    type=click.Choice(AVAILABLE_EMBEDDERS),
+    default=AVAILABLE_EMBEDDERS[0],
+)
+@click.option(
+    "--vector-size",
+    type=int,
+    default=100,
+    help="The size of the embedding vectors."
+)
+@click.option(
+    "--embedder-file",
+    type=click.Path(resolve_path=True),
+    help="The path to save the embedder file"
+)
+def load_pretrained(
+    name: str,
+    vector_size: int,
+    embedder_file: str
+):
+    train_data = None
+    embedder_klass = ArticleEmbedder.registered_subclasses[name]
+    embedder = embedder_klass.return_pretrained(
+        training_data=train_data,
+        vector_size=vector_size)
+    if not embedder_file:
+        embedder_file = Path(f"{name.lower()}.model").resolve().as_posix()
+    print(f"Saving model: {name!r} to location: {embedder_file}")
+    embedder.save(embedder_file)
+
+@cli.command()
+@click.option(
+    "--csv-path",
+        type=click.Path(exists=True),
+        required=True,
+        help="The path to the raw data CSV file."
+)
+@click.option(
+    "--name",
+    type=click.Choice(AVAILABLE_EMBEDDERS),
+    default=AVAILABLE_EMBEDDERS[0],
+)
+@click.option(
+    "--vector-size",
+    type=int,
+    default=100,
+    help="The size of the embedding vectors."
+)
+@click.option(
+    "--embedder-file",
+    type=click.Path(exists=True, dir_okay=False),
+    required=True
+)
+@click.option(
+    "--embedded-path",
+    type=click.Path(resolve_path=True),
+    required=True,
+    help = "path to save embedded text"
+)
+def embed_data(
+    csv_path: str,
+    name: str,
+    vector_size: int,
+    embedded_path: str
+):
+    train_data = None
+    embedder_klass = ArticleEmbedder.registered_subclasses[name]
+    embedder = embedder_klass.return_pretrained(
+        training_data=train_data,
+        vector_size=vector_size)
+    row_numbers = []
+    embeddings = []
+    df = pd.read_csv(csv_path)
+    for index, row in df.iterrows():
+        text = row['text']
+        embedding = embedder.embed(text).numpy()
+        row_numbers.append(index)
+        embeddings.append(embedding)
+    embedded_df = pd.DataFrame({
+        'row_number' : row_numbers,
+        'embedding' : embeddings
+    })
+    embedded_df.to_csv(embedded_path)
+
+@cli.command()
+@click.option(
+    "--csv-path",
+        type=click.Path(exists=True),
+        required=True,
+        help="The path to the raw data CSV file."
+)
+@click.option(
+    "--name",
+    type=click.Choice(AVAILABLE_EMBEDDERS),
+    default=AVAILABLE_EMBEDDERS[0],
+)
+@click.option(
+    "--vector-size",
+    type=int,
+    default=100,
+    help="The size of the embedding vectors."
+)
+@click.option(
+    "--embedded-path",
+    type=click.Path(resolve_path=True),
+    required=True,
+    help = "path to save embedded text"
+)
+@click.option(
+    "--batch-size",
+    type=int,
+    default=1000,
+    help="Batch size"
+)
+def batched_embed_data(
+    csv_path: str,
+    name: str,
+    vector_size: int,
+    embedded_path: str,
+    batch_size: int
+):
+    train_data = None
+    embedder_klass = ArticleEmbedder.registered_subclasses[name]
+    embedder = embedder_klass.return_pretrained(
+        training_data=train_data,
+        vector_size=vector_size)
+
+    row_numbers = []
+    embeddings = []
+
+    for chunk in pd.read_csv(csv_path, chunksize=batch_size):
+        batch_embeddings = []
+        batch_row_numbers = chunk.index.tolist()
+        articles = chunk['text'].fillna("").astype(str).tolist()  # Extract text data
+
+        for article in articles:
+            embedding = embedder.embed(article)
+            batch_embeddings.append(embedding)
+        embeddings.extend(batch_embeddings)
+        row_numbers.extend(batch_row_numbers)
+        #batch_df = pd.DataFrame({'row_number':batch_row_numbers, 'embeddings':batch_embeddings})
+        #batch_df.to_csv(embedded)
+    embeddings_df = pd.DataFrame({'row_number': row_numbers, 'embeddings': embeddings})
+    embeddings_df.to_csv(embedded_path)
 
 
 @cli.command()
