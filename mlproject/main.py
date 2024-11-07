@@ -7,7 +7,6 @@ from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder
 from mlproject.models import NNBaseModel
 from pathlib import Path
 from mlproject import constants as pc
-import pandas as pd
 import polars as pl
 
 @click.group()
@@ -147,47 +146,9 @@ def load_pretrained(
 @click.option(
     "--name",
     type=click.Choice(AVAILABLE_EMBEDDERS),
-    default=InferSentEmbedder,
+    default="InferSentEmbedder",
+    help="The name of the embedder to use."
 )
-@click.option(
-    "--vector-size",
-    type=int,
-    default=100,
-    help="The size of the embedding vectors."
-)
-@click.option(
-    "--embedder-file",
-    type=click.Path(resolve_path=True),
-    help="The path to save the embedder file"
-)
-@click.option(
-    "--model-path",
-    type=click.Path(exists=True),
-    required=True,
-    help="Path to the InferSent model file"
-)
-@click.option(
-    "--w2v-path",
-    type=click.Path(exists=True),
-    required=True,
-    help="Path to the word vectors file"
-)
-def load_pretrained_infersent(name: str, vector_size: int, embedder_file: str, model_path: str, w2v_path: str):
-    train_data = None
-    embedder_klass = InferSentEmbedder
-    embedder = embedder_klass.return_pretrained(
-        training_data=train_data,
-        vector_size=vector_size,
-        model_path=model_path,
-        w2v_path=w2v_path
-    )
-    if not embedder_file:
-        embedder_file = Path(f"{name.lower()}.model").resolve().as_posix()
-    print(f"Saving model: {name!r} to location: {embedder_file}")
-    embedder.save(embedder_file)
-
-
-@cli.command()
 @click.option(
     "--csv-path",
     type=click.Path(exists=True),
@@ -195,42 +156,75 @@ def load_pretrained_infersent(name: str, vector_size: int, embedder_file: str, m
     help="The path to the raw data CSV file."
 )
 @click.option(
-    "--embedder-file",
-    type=click.Path(exists=True, dir_okay=False),
-    required=True,
-    help="The path to the pre-trained embedder file."
-)
-@click.option(
     "--embedded-path",
     type=click.Path(resolve_path=True),
     required=True,
     help="The path to save the embedded text."
 )
-def embed_data(
+@click.option(
+    "--n-rows",
+    type=int,
+    required=False,
+    help="The number of rows to read from the CSV file."
+)
+@click.option(
+    "--model-path",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to the InferSent model file."
+)
+@click.option(
+    "--w2v-path",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to the word vectors file."
+)
+@click.option(
+    "--vector-size",
+    type=int,
+    default=4096,
+    help="The size of the embedding vectors."
+)
+def embed_data_with_infersent(
+        name: str,
         csv_path: str,
-        embedder_file: str,
-        embedded_path: str
+        embedded_path: str,
+        n_rows: int,
+        model_path: str,
+        w2v_path: str,
+        vector_size: int
 ):
-    # Load the embedder from the specified file
-    embedder = ArticleEmbedder.load(embedder_file)
+    """
+    Load the pretrained InferSent embedder and use it to embed data from the CSV file.
+    """
 
-    row_numbers = []
-    embeddings = []
-    df = pd.read_csv(csv_path)
+    # Load the InferSent embedder
+    print("Loading the InferSent embedder...")
+    embedder = InferSentEmbedder(model=None, vector_size=vector_size, model_path=model_path,w2v_path=w2v_path)
+    embedder.load_model()
 
-    # Iterate through each row in the CSV and create embeddings
-    for index, row in df.iterrows():
-        text = row['text']
-        embedding = embedder.embed(text).numpy()
-        row_numbers.append(index)
-        embeddings.append(embedding)
+    # Load the dataset
+    print("Loading dataset...")
+    if n_rows is not None:
+        df = pl.read_csv(csv_path, n_rows=n_rows)
+    else:
+        df = pl.read_csv(csv_path)
 
-    # Save the embeddings to the specified path
-    embedded_df = pd.DataFrame({
-        'row_number': row_numbers,
-        'embedding': embeddings
-    })
-    embedded_df.to_csv(embedded_path, index=False)
+    # Create the dataset object
+    dataset = RawHumanChatBotData(data=df)
+
+    # Embed the data
+    print("Starting to embed data...")
+
+    embeddings = HumanChatBotDataset.from_raw_data(dataset, embedder)#embedder.embed_articles(dataset)
+
+    # Create a DataFrame with embeddings and indices
+    embeddings_df = embeddings.data
+
+    # Save the DataFrame to a file
+    print(f"Saving embeddings to {embedded_path}...")
+    embeddings_df.write_csv(embedded_path)
+    print("Embeddings saved successfully.")
 
 @cli.command()
 @read_raw_data_common_options
