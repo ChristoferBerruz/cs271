@@ -78,7 +78,6 @@ class ArticleEmbedder(ABC):
         pass
 
 
-
 def train_word2vec_on_raw_data(
         dataset: RawHumanChatBotData,
         vector_size: int = 100,
@@ -145,6 +144,15 @@ class CBOWWord2Vec(ArticleEmbedder):
         )
         return cls(word2vec, vector_size)
 
+    @classmethod
+    def return_pretrained(
+            cls,
+            training_data: None,
+            vector_size: int = 100
+    ) -> "CBOWWord2Vec":
+        raise NotImplementedError(
+            "Pre-trained Word2Vec models are not supported.")
+
 
 @dataclass
 class InferSentEmbedder(ArticleEmbedder):
@@ -153,8 +161,10 @@ class InferSentEmbedder(ArticleEmbedder):
     """
     model: InferSent = field(repr=False)
     vector_size: int
-    model_path: str = field(default= "/content/drive/MyDrive/Fall2024/CS271-MachineLearning/MLProject/InferSent/infersent2.pkl")
-    w2v_path: str = field(default= "/content/drive/MyDrive/Fall2024/CS271-MachineLearning/MLProject/InferSent/crawl-300d-2M.vec")
+    model_path: str = field(
+        default="/content/drive/MyDrive/Fall2024/CS271-MachineLearning/MLProject/InferSent/infersent2.pkl")
+    w2v_path: str = field(
+        default="/content/drive/MyDrive/Fall2024/CS271-MachineLearning/MLProject/InferSent/crawl-300d-2M.vec")
 
     def __post_init__(self):
         if not hasattr(self, 'model') or self.model is None:
@@ -172,11 +182,11 @@ class InferSentEmbedder(ArticleEmbedder):
             'version': model_version
         }
         self.model = InferSent(params_model)
-        self.model.load_state_dict(torch.load(self.model_path, weights_only=True))
+        self.model.load_state_dict(torch.load(
+            self.model_path, weights_only=True))
         self.model.set_w2v_path(self.w2v_path)
         self.model.build_vocab_k_words(K=100000)  # Set up vocabulary
         self.model = self.model.eval()
-
 
     def embed(self, article: str) -> torch.Tensor:
         """
@@ -201,7 +211,8 @@ class InferSentEmbedder(ArticleEmbedder):
         sentences = []
         for sentences in data_gen:
             # Filter out empty or non-string sentences
-            sentences = [s for s in sentences if isinstance(s, str) and s.strip()]
+            sentences = [s for s in sentences if isinstance(
+                s, str) and s.strip()]
 
         for sentence in sentences:
             if sentence.strip():  # Ensure the sentence is not empty
@@ -280,7 +291,6 @@ class USEEmbedder(ArticleEmbedder):
         average_embedding = np.mean(sentence_embeddings, axis=0)
         return torch.from_numpy(average_embedding)
 
-
     @classmethod
     def return_pretrained(
             cls,
@@ -289,7 +299,6 @@ class USEEmbedder(ArticleEmbedder):
     ) -> "USEEmbedder":
         # Instantiate the class without requiring training data
         return cls(model=None, vector_size=vector_size)
-
 
     @classmethod
     def by_training_on_raw_data(
