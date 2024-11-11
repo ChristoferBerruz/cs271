@@ -1,7 +1,8 @@
 import click
+import os
 from functools import wraps
-from typing import Optional
-from mlproject.data_processing import RawHumanChatBotData, WikihowSubset
+from typing import Optional, Tuple
+from mlproject.data_processing import RawHumanChatBotData, WikihowSubset, NeuralNetworkExperimentResult, RunResult
 from mlproject.datasets import HumanChatBotDataset, ImageByCrossMultiplicationDataset
 from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder
 from mlproject.models import NNBaseModel, CNN2D
@@ -386,6 +387,29 @@ def embed_raw_data(
     print(f"Saved embedded test dataset at: {test_file_path!r}")
 
 
+def get_information_from_embedded_path(some_path: str) -> Tuple[str, str, bool]:
+    """Give the path to an embedded dataset, return
+    the name of the original dataset, the name of the embedder
+    and whether training or testing.
+
+    Args:
+        some_path (str): some path to an embedded dataset
+
+    Returns:
+        Tuple[str, str, bool]: orig_ds_name, embedder_name, is_training
+    """
+    base_name = os.path.basename(some_path).split(".")[0]
+    res = base_name.split("_")
+    if len(res) != 3:
+        raise ValueError(
+            "The name of the file is not in the correct format. It should be: origdsname_embeddername_train/test.csv")
+    origig_ds_name, embedder_name, training_portion = res
+    is_training = training_portion in ("train", "training")
+    testing = training_portion in ("test", "testing")
+    assert is_training or testing, "The dataset is neither training nor testing. Please add 'train' or 'test' at the end of the file name."
+    return origig_ds_name, embedder_name, is_training
+
+
 @cli.command()
 @click.option(
     "--training-dataset-path",
@@ -414,14 +438,31 @@ def embed_raw_data(
     default=0.001,
     help="The learning rate for the optimizer."
 )
+@click.option(
+    "--save-dir",
+    type=click.Path(resolve_path=True, file_okay=False, exists=True),
+    help="The directory to save the results.",
+    default="."
+)
 def train_nn_model(
     training_dataset_path: str,
     testing_dataset_path: str,
     model_name: str,
     epochs: int,
-    learning_rate: float
+    learning_rate: float,
+    save_dir: str
 ):
     torch.set_default_dtype(torch.float32)
+    # BEGIN: Validation of filenames
+    training_orig_ds_name, training_embedder_name, is_training = get_information_from_embedded_path(
+        training_dataset_path)
+    testing_orig_ds_name, testing_embedder_name, _ = get_information_from_embedded_path(
+        testing_dataset_path)
+    assert training_orig_ds_name == testing_orig_ds_name, "The training and testing datasets are not the same."
+    assert training_embedder_name == testing_embedder_name, "The embedding used for training and testing datasets are not the same."
+    # END: Validation of filenames
+    run_f_name = f"{training_orig_ds_name}_{training_embedder_name}_{model_name}.json".lower()
+    full_run_path = Path(save_dir).joinpath(run_f_name)
     train_dataset = HumanChatBotDataset.load(training_dataset_path)
     test_dataset = HumanChatBotDataset.load(testing_dataset_path)
     embedding_size = train_dataset.embedding_size
@@ -446,6 +487,13 @@ def train_nn_model(
         epochs=epochs,
         learning_rate=learning_rate
     )
+    run_result = RunResult(
+        original_dataset_name=training_orig_ds_name,
+        embedder_name=training_embedder_name,
+        experiment_result=result
+    )
+    print(f"Saving experiment results at: {full_run_path!r}")
+    run_result.save(full_run_path)
 
 
 @cli.command()

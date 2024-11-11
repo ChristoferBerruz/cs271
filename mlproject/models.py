@@ -4,49 +4,12 @@ from typing import Type, List, ClassVar, Dict, Tuple
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
+from collections import defaultdict
+
 from abc import ABC, abstractmethod
 
 from mlproject.datasets import HumanChatBotDataset
-
-from dataclasses import dataclass, field
-
-
-@dataclass
-class NeuralNetworkExperimentResult:
-    learning_rate: float
-    epochs: int
-    training_batch_size: int
-    optimizer_name: str
-    criterion_name: str
-    training_accuracies: List[float] = field(default_factory=list)
-    training_losses: List[float] = field(default_factory=list)
-    testing_accuracies: List[float] = field(default_factory=list)
-    testing_losses: List[float] = field(default_factory=list)
-
-    def save(self, path: str):
-        with open(path, mode="wb") as f:
-            torch.save(self, f)
-
-    @classmethod
-    def load(cls, path: str) -> "NeuralNetworkExperimentResult":
-        with open(path, mode="rb") as f:
-            return torch.load(f)
-
-    @property
-    def training_loss(self):
-        return self.training_losses[-1]
-
-    @property
-    def testing_loss(self):
-        return self.testing_losses[-1]
-
-    @property
-    def testing_accuracy(self):
-        return self.testing_accuracies[-1]
-
-    @property
-    def training_accuracy(self):
-        return self.training_accuracies[-1]
+from mlproject.data_processing import NeuralNetworkExperimentResult
 
 
 class NNBaseModel(torch.nn.Module, ABC):
@@ -70,16 +33,30 @@ class NNBaseModel(torch.nn.Module, ABC):
     ):
         pass
 
-    def compute_accuracy(self, data_loader: DataLoader) -> Tuple[int, int, float]:
+    def compute_accuracy(self, data_loader: DataLoader) -> Tuple[int, int, float, Dict[int, Dict[int, int]]]:
         correct = 0
+        make_up = defaultdict(lambda: defaultdict(int))
         with torch.no_grad():
             for text_vectors, text_labels in data_loader:
                 outputs = self(text_vectors)
                 predicted = torch.argmax(outputs, dim=1)
                 correct += (predicted == text_labels).sum().item()
+                # The predicted make "the buckets"
+                # the text_labels is the "true" class
+                for _i, _j in zip(predicted, text_labels):
+                    if isinstance(_i, torch.Tensor):
+                        i = _i.item()
+                    else:
+                        i = int(_i)
+
+                    if isinstance(_j, torch.Tensor):
+                        j = _j.item()
+                    else:
+                        j = int(_j)
+                    make_up[i][j] += 1
         total_items = len(data_loader.dataset)
         accuracy = correct / total_items
-        return correct, total_items, accuracy
+        return correct, total_items, accuracy, make_up
 
     def compute_loss(self, data_loader: DataLoader, criterion: torch.nn.Module) -> float:
         loss = 0.0
@@ -102,14 +79,16 @@ class NNBaseModel(torch.nn.Module, ABC):
         testing_accuracies = exp_result.testing_accuracies
         training_loss = self.compute_loss(train_loader, criterion)
         training_losses.append(training_loss)
-        _, _, training_accuracy = self.compute_accuracy(
+        _, _, training_accuracy, tr_make_up = self.compute_accuracy(
             train_loader)
         training_accuracies.append(training_accuracy)
         testing_loss = self.compute_loss(test_loader, criterion)
         testing_losses.append(testing_loss)
-        _, _, testing_accuracy = self.compute_accuracy(
+        _, _, testing_accuracy, test_make_up = self.compute_accuracy(
             test_loader)
         testing_accuracies.append(testing_accuracy)
+        exp_result.training_classification_results.append(tr_make_up)
+        exp_result.testing_classification_results.append(test_make_up)
 
 
 class LogisticRegression(NNBaseModel):
@@ -171,14 +150,13 @@ class LogisticRegression(NNBaseModel):
 
 
 class SimpleMLP(NNBaseModel):
-    """A simple multi-layer perceptron model with only 2
-    neurons in the hidden layer.
+    """A MLP with a single hidden layer of 128 neurons.
     """
 
     def __init__(self, input_dim: int, output_dim: int):
         super(SimpleMLP, self).__init__()
-        self.fc1 = torch.nn.Linear(input_dim, 2)
-        self.fc2 = torch.nn.Linear(2, output_dim)
+        self.fc1 = torch.nn.Linear(input_dim, 128)
+        self.fc2 = torch.nn.Linear(128, output_dim)
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -224,6 +202,7 @@ class SimpleMLP(NNBaseModel):
             testing_loss = exp_result.testing_loss
             testing_accuracy = exp_result.testing_accuracy
             print(f"Epoch: {epoch}, Training Loss: {training_loss}, Training Accuracy: {training_accuracy*100:.2f}%, Testing Loss: {testing_loss}, Testing Accuracy: {testing_accuracy*100:.2f}%")
+        return exp_result
 
 
 class CNN2D(NNBaseModel):
@@ -285,3 +264,4 @@ class CNN2D(NNBaseModel):
             testing_loss = exp_result.testing_loss
             testing_accuracy = exp_result.testing_accuracy
             print(f"Epoch: {epoch}, Training Loss: {training_loss}, Training Accuracy: {training_accuracy*100:.2f}%, Testing Loss: {testing_loss}, Testing Accuracy: {testing_accuracy*100:.2f}%")
+        return exp_result

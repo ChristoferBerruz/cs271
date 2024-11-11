@@ -1,8 +1,12 @@
 import polars as pl
-from typing import Optional, Tuple, Set, Generator, Callable
+from typing import Optional, Tuple, Set, Generator, Callable, List, Dict
 import pandas as pd
 from dataclasses import dataclass, field
 from mlproject import constants as pc
+import json
+
+from dataclasses_json import dataclass_json
+
 
 @dataclass
 class RawHumanChatBotData:
@@ -120,6 +124,7 @@ class RawHumanChatBotData:
         for text in self.data["text"]:
             yield text
 
+
 @dataclass
 class WikihowSubset:
     data: pl.DataFrame = field(repr=False)
@@ -128,7 +133,8 @@ class WikihowSubset:
     def return_subset(
             cls,
             csv_path: str,
-            seed: Optional[int] = None,  # Default seed or pc.R_SEED if defined elsewhere
+            # Default seed or pc.R_SEED if defined elsewhere
+            seed: Optional[int] = None,
             n_rows: Optional[int] = 200000
     ) -> "WikihowSubset":
         data = cls._get_subset(
@@ -159,7 +165,7 @@ class WikihowSubset:
         print(f"Reading the dataset from {csv_path!r}")
 
         # Select specific columns
-        selected_columns = ['title', 'headline', 'sectionLabel','text']
+        selected_columns = ['title', 'headline', 'sectionLabel', 'text']
 
         data = pl.read_csv(csv_path, columns=selected_columns)
         data = data.drop_nulls(['text'])
@@ -172,11 +178,13 @@ class WikihowSubset:
         df['title'] = (
             df['title']
             .str.strip()  # Remove leading/trailing spaces
-            .replace(r'\s+', ' ', regex=True)  # Replace multiple spaces with a single space
+            # Replace multiple spaces with a single space
+            .replace(r'\s+', ' ', regex=True)
             .replace(r'\d+$', '', regex=True)  # Remove trailing numbers
         )
 
-        df['word_count'] = df['text'].apply(lambda x: len(x.split()) if pd.notnull(x) else 0)
+        df['word_count'] = df['text'].apply(
+            lambda x: len(x.split()) if pd.notnull(x) else 0)
         df = df[df['word_count'] >= 40]
         df['length'] = df['word_count'].astype(str) + " words"
         # Drop the 'text' column after calculating 'length'
@@ -190,6 +198,7 @@ class WikihowSubset:
         sampled_data = data.sample(n=n_rows, seed=seed)
         return sampled_data
 
+
 @dataclass
 class ReusableGenerator:
     """
@@ -201,3 +210,74 @@ class ReusableGenerator:
 
     def __iter__(self):
         return self.generator_func()
+
+
+@dataclass_json
+@dataclass
+class NeuralNetworkExperimentResult:
+    learning_rate: float
+    epochs: int
+    training_batch_size: int
+    optimizer_name: str
+    criterion_name: str
+    training_accuracies: List[float] = field(default_factory=list)
+    training_losses: List[float] = field(default_factory=list)
+    testing_accuracies: List[float] = field(default_factory=list)
+    testing_losses: List[float] = field(default_factory=list)
+    # A single classification result is a dictionary with
+    # N keys where N is the number of classes in the dataset.
+    # This is the possible number of buckets samples can end up in.
+    # Then, for each bucket, we analyze the make up. The make up
+    # is how many samples (n) from class j are classified in bucket i.
+    # As a result, to know how many camples from class j are classified
+    # in bucket i, we can simply do classification_result[i][j].
+    # However, because the classification results vary from epoch to epoch,
+    # we store them in a list. The list is indexed by epoch.
+    training_classification_results: List[Dict[int, Dict[int, int]]] = field(
+        default_factory=list)
+    testing_classification_results: List[Dict[int, Dict[int, int]]] = field(
+        default_factory=list)
+
+    def save(self, path: str):
+        with open(path, mode="w") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def load(cls, path: str) -> "NeuralNetworkExperimentResult":
+        with open(path, mode="r") as f:
+            json_obj = json.load(f)
+            return cls.from_dict(json_obj)
+
+    @property
+    def training_loss(self):
+        return self.training_losses[-1]
+
+    @property
+    def testing_loss(self):
+        return self.testing_losses[-1]
+
+    @property
+    def testing_accuracy(self):
+        return self.testing_accuracies[-1]
+
+    @property
+    def training_accuracy(self):
+        return self.training_accuracies[-1]
+
+
+@dataclass_json
+@dataclass
+class RunResult:
+    original_dataset_name: str
+    embedder_name: str
+    experiment_result: NeuralNetworkExperimentResult
+
+    def save(self, path: str):
+        with open(path, mode="w") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def load(cls, path: str) -> "RunResult":
+        with open(path, mode="r") as f:
+            json_obj = json.load(f)
+            return cls.from_dict(json_obj)
