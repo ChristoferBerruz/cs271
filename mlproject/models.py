@@ -52,10 +52,8 @@ class NeuralNetworkExperimentResult:
 class NNBaseModel(torch.nn.Module, ABC):
     registry: ClassVar[Dict[str, "NNBaseModel"]] = {}
 
-    def __init__(self, input_dim: int, output_dim: int):
+    def __init__(self):
         super(NNBaseModel, self).__init__()
-        self.input_dim = input_dim
-        self.output_dim = output_dim
 
     def __init_subclass__(cls) -> None:
         if cls.__name__ not in NNBaseModel.registry:
@@ -65,8 +63,8 @@ class NNBaseModel(torch.nn.Module, ABC):
     @abstractmethod
     def train(
         self,
-        training_dataset: HumanChatBotDataset,
-        testing_dataset: HumanChatBotDataset,
+        train_dataset: HumanChatBotDataset,
+        test_dataset: HumanChatBotDataset,
         learning_rate: float = 0.001,
         epochs: int = 100,
     ):
@@ -122,7 +120,7 @@ class LogisticRegression(NNBaseModel):
     """
 
     def __init__(self, input_dim: int, output_dim: int):
-        super(LogisticRegression, self).__init__(input_dim, output_dim)
+        super(LogisticRegression, self).__init__()
         self.linear = torch.nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
@@ -178,7 +176,7 @@ class SimpleMLP(NNBaseModel):
     """
 
     def __init__(self, input_dim: int, output_dim: int):
-        super(SimpleMLP, self).__init__(input_dim, output_dim)
+        super(SimpleMLP, self).__init__()
         self.fc1 = torch.nn.Linear(input_dim, 2)
         self.fc2 = torch.nn.Linear(2, output_dim)
 
@@ -230,28 +228,27 @@ class SimpleMLP(NNBaseModel):
 
 class CNN2D(NNBaseModel):
 
-    def __init__(self, input_dim: int, output_dim: int):
+    def __init__(self, image_height: int, image_width: int, n_classes: int, kernel_size: int = 3, out_channels: int = 3):
         # TODO: Conside expanding the neural network with batchnorm
         # dropout, and the like.
-        super(CNN2D, self).__init__(input_dim, output_dim)
-        self.vector_size = input_dim
-        # assuming a square image where input dim (a vector) is reshaped into an image
-        self.image_width = int(self.vector_size**0.5)
-        self.in_features = 1
-        self.conv = torch.nn.Conv2d(
-            self.in_features, 2, kernel_size=2, padding=1, stride=1)
-        self.fc = torch.nn.Linear(242, output_dim)
+        super(CNN2D, self).__init__()
+        self.conv1 = torch.nn.Conv2d(1, out_channels, kernel_size=kernel_size)
+        self.pool_1 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+        self.fc1 = torch.nn.Linear(
+            out_channels * (image_height - kernel_size + 1) * (image_width - kernel_size + 1) // 4, 32)
+        self.fc2 = torch.nn.Linear(32, n_classes)
 
     def forward(self, x):
-        x = torch.relu(self.conv(x))
+        x = self.pool_1(torch.relu(self.conv1(x)))
         x = torch.flatten(x, 1)
-        x = torch.sigmoid(self.fc(x))
+        x = torch.relu(self.fc1(x))
+        x = torch.sigmoid(self.fc2(x))
         return x
 
     def train(
         self,
-        training_dataset: HumanChatBotDataset,
-        testing_dataset: HumanChatBotDataset,
+        train_dataset: HumanChatBotDataset,
+        test_dataset: HumanChatBotDataset,
         learning_rate: float = 0.001,
         epochs: int = 100,
     ):
@@ -259,9 +256,9 @@ class CNN2D(NNBaseModel):
         criterion = torch.nn.CrossEntropyLoss()
         training_batch_size = 32
         train_loader = DataLoader(
-            training_dataset, batch_size=training_batch_size, shuffle=True)
+            train_dataset, batch_size=training_batch_size, shuffle=True)
         test_loader = DataLoader(
-            testing_dataset, batch_size=32, shuffle=False
+            test_dataset, batch_size=32, shuffle=False
         )
         exp_result = NeuralNetworkExperimentResult(
             learning_rate=learning_rate,

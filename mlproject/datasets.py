@@ -2,10 +2,13 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
 import polars as pl
 import torch
+import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 import numpy as np
 from mlproject.data_processing import RawHumanChatBotData
 from mlproject.embeddings import ArticleEmbedder
+
+from tqdm import tqdm
 
 
 @dataclass
@@ -120,25 +123,66 @@ class HumanChatBotDataset(Dataset):
 
 
 @dataclass
-class TwoDImagesDataset(Dataset):
-    """Simple Dataset Wrapper that resizes
-    the embedded vectors into a square image
-    shape
-
-    TODO: Consider experimenting with making
-    images out of the embedding vectors.
+class ImageByCrossMultiplicationDataset(Dataset):
+    """This dataset contains embeddings expressed as the
+    element wise multiplication of the same embedding.
     """
+    images: torch.Tensor
+    labels: torch.Tensor
 
-    dataset: HumanChatBotDataset
+    @classmethod
+    def from_human_chatbot_ds(cls, ds: HumanChatBotDataset, apply_transforms: bool = True) -> "ImageByCrossMultiplicationDataset":
+        """Create a dataset of images by calculating the cross multiplication. For each embedding
+        of size vector_size, the cross multiplication is defined as the matrix multiplication
+        of (vector_size, 1) @ (1, vector_size) which results in a (vector_size, vector_size) matrix.
 
-    def __len__(self):
-        return len(self.dataset)
+        Args:
+            ds (HumanChatBotDataset): the human chatbot dataset
+            apply_transforms (bool, optional): Whether to apply image transforms, such as normalization. Defaults to True.
+
+        Returns:
+            ImageByCrossMultiplicationDataset: An image dataset.
+        """
+        n_samples = len(ds)
+        vector_size = ds.embedding_size
+        labels = []
+        images = []
+        normalized_transform = transforms.Normalize((0.5,), (0.5,))
+
+        # By definition, images are (C, H, W) tensors
+        print(
+            f"Generating image dataset from {n_samples} embedding samples")
+        for i in tqdm(range(n_samples)):
+            embedding, label = ds[i]
+            # rehape the embedding to be a (1, vector_size) tensor
+            embedding = embedding.view(1, vector_size)
+            # calculate the cross multiplication
+            cross_mult = embedding.T @ embedding
+            # reshape to allow for the concept of a channel
+            cross_mult = cross_mult.view(1, vector_size, vector_size)
+            if apply_transforms:
+                cross_mult = normalized_transform(cross_mult)
+
+            images.append(cross_mult)
+            labels.append(label)
+
+        embeddings = torch.stack(images)
+        labels = torch.tensor(labels, dtype=torch.long)
+        return cls(embeddings, labels)
+
+    def __len__(self) -> int:
+        return len(self.images)
+
+    @property
+    def image_height(self) -> int:
+        return self.images.shape[2]
+
+    @property
+    def image_width(self) -> int:
+        return self.images.shape[3]
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        embedding, label = self.dataset.__getitem__(idx)
-        v_size = len(embedding)
-        n = int(v_size**0.5)
-        return embedding.reshape((1, n, n)), label
+        return self.images[idx], self.labels[idx]
 
 
 @dataclass

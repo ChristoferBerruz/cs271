@@ -2,9 +2,9 @@ import click
 from functools import wraps
 from typing import Optional
 from mlproject.data_processing import RawHumanChatBotData, WikihowSubset
-from mlproject.datasets import HumanChatBotDataset
+from mlproject.datasets import HumanChatBotDataset, ImageByCrossMultiplicationDataset
 from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder
-from mlproject.models import NNBaseModel
+from mlproject.models import NNBaseModel, CNN2D
 from pathlib import Path
 from mlproject import constants as pc
 import polars as pl
@@ -13,6 +13,8 @@ from sklearn.ensemble import AdaBoostClassifier
 from sklearn.preprocessing import LabelEncoder
 
 import numpy as np
+
+import torch
 
 
 @click.group()
@@ -419,11 +421,25 @@ def train_nn_model(
     epochs: int,
     learning_rate: float
 ):
+    torch.set_default_dtype(torch.float32)
     train_dataset = HumanChatBotDataset.load(training_dataset_path)
     test_dataset = HumanChatBotDataset.load(testing_dataset_path)
+    embedding_size = train_dataset.embedding_size
+    n_classes = train_dataset.number_of_classes
     model_klass = NNBaseModel.registry[model_name]
-    model: NNBaseModel = model_klass(input_dim=train_dataset.embedding_size,
-                                     output_dim=train_dataset.number_of_classes)
+    model: NNBaseModel = None
+    if model_name == "CNN2D":
+        train_dataset = ImageByCrossMultiplicationDataset.from_human_chatbot_ds(
+            train_dataset)
+        test_dataset = ImageByCrossMultiplicationDataset.from_human_chatbot_ds(
+            test_dataset)
+        image_height = train_dataset.image_height
+        image_width = train_dataset.image_width
+        model = CNN2D(image_height=image_height,
+                      image_width=image_width, n_classes=n_classes)
+    else:
+        model = model_klass(input_dim=embedding_size,
+                            output_dim=n_classes)
     result = model.train(
         train_dataset=train_dataset,
         test_dataset=test_dataset,
