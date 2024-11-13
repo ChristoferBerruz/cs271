@@ -17,6 +17,8 @@ import numpy as np
 
 import torch
 
+import re
+
 
 @click.group()
 def cli():
@@ -387,7 +389,7 @@ def embed_raw_data(
     print(f"Saved embedded test dataset at: {test_file_path!r}")
 
 
-def get_information_from_embedded_path(some_path: str) -> Tuple[str, str, bool]:
+def get_information_from_embedded_path(some_path: str) -> Tuple[str, str]:
     """Give the path to an embedded dataset, return
     the name of the original dataset, the name of the embedder
     and whether training or testing.
@@ -396,35 +398,60 @@ def get_information_from_embedded_path(some_path: str) -> Tuple[str, str, bool]:
         some_path (str): some path to an embedded dataset
 
     Returns:
-        Tuple[str, str, bool]: orig_ds_name, embedder_name, is_training
+        Tuple[str, str, bool]: orig_ds_name, embedder_name
     """
     base_name = os.path.basename(some_path).split(".")[0]
-    res = base_name.split("_")
-    if len(res) != 3:
+    pattern = r"(?P<embedder>\w+)_(?P<ds_name>\w+).*"
+    match = re.match(pattern, base_name)
+    if not match:
         raise ValueError(
-            "The name of the file is not in the correct format. It should be: origdsname_embeddername_train/test.csv")
-    origig_ds_name, embedder_name, training_portion = res
-    is_training = training_portion in ("train", "training")
-    testing = training_portion in ("test", "testing")
-    assert is_training or testing, "The dataset is neither training nor testing. Please add 'train' or 'test' at the end of the file name."
-    return origig_ds_name, embedder_name, is_training
+            f"Could not extract the dataset name and embedder name from {some_path!r}")
+    embedder_name = match.group("embedder")
+    orig_ds_name = match.group("ds_name")
+    return orig_ds_name, embedder_name
+
+
+def get_training_and_testing_datasets(ds: str, test_ds: Optional[str], seed: Optional[float] = None) -> Tuple[HumanChatBotDataset, HumanChatBotDataset]:
+    if ds and test_ds:
+        train_dataset = HumanChatBotDataset.load(ds)
+        test_dataset = HumanChatBotDataset.load(test_ds)
+    else:
+        # Load the csv file
+        df = pl.read_csv(ds)
+        # shuffle and split
+        shuffled_data = df.sample(fraction=1, shuffle=True, seed=seed)
+        train_size = int(len(shuffled_data) * pc.TRAIN_PERCENT)
+        train_data = shuffled_data.head(train_size)
+        test_data = shuffled_data.tail(-train_size)
+        train_dataset = HumanChatBotDataset(train_data)
+        test_dataset = HumanChatBotDataset(test_data)
+    return train_dataset, test_dataset
 
 
 @cli.command()
 @click.option(
-    "--training-dataset-path",
+    "--ds",
     type=click.Path(exists=True, dir_okay=False),
+    help="The path to the dataset to use for training.",
     required=True
 )
 @click.option(
-    "--testing-dataset-path",
+    "--test-ds",
     type=click.Path(exists=True, dir_okay=False),
-    required=True
+    default=None,
+    help="The path to the test dataset. If used, it will be assumed that --ds is the training dataset."
+)
+@click.option(
+    "--seed",
+    type=float,
+    default=pc.R_SEED,
+    help="The seed to use for splitting ds into training and test datasets. If --test-ds is provided, this will be ignored."
 )
 @click.option(
     "--model-name",
     type=click.Choice(AVAILABLE_NN_MODELS),
-    required=True
+    required=True,
+    help="The name of the model to use for training."
 )
 @click.option(
     "--epochs",
@@ -445,8 +472,9 @@ def get_information_from_embedded_path(some_path: str) -> Tuple[str, str, bool]:
     default="."
 )
 def train_nn_model(
-    training_dataset_path: str,
-    testing_dataset_path: str,
+    ds: str,
+    test_ds: str,
+    seed: float,
     model_name: str,
     epochs: int,
     learning_rate: float,
@@ -454,17 +482,12 @@ def train_nn_model(
 ):
     torch.set_default_dtype(torch.float32)
     # BEGIN: Validation of filenames
-    training_orig_ds_name, training_embedder_name, is_training = get_information_from_embedded_path(
-        training_dataset_path)
-    testing_orig_ds_name, testing_embedder_name, _ = get_information_from_embedded_path(
-        testing_dataset_path)
-    assert training_orig_ds_name == testing_orig_ds_name, "The training and testing datasets are not the same."
-    assert training_embedder_name == testing_embedder_name, "The embedding used for training and testing datasets are not the same."
+    ds_name, embedder_name = get_information_from_embedded_path(ds)
     # END: Validation of filenames
-    run_f_name = f"{training_orig_ds_name}_{training_embedder_name}_{model_name}.json".lower()
+    run_f_name = f"{ds_name}_{embedder_name}_{model_name}.json".lower()
     full_run_path = Path(save_dir).joinpath(run_f_name)
-    train_dataset = HumanChatBotDataset.load(training_dataset_path)
-    test_dataset = HumanChatBotDataset.load(testing_dataset_path)
+    train_dataset, test_dataset = get_training_and_testing_datasets(
+        ds=ds, test_ds=test_ds, seed=seed)
     embedding_size = train_dataset.embedding_size
     n_classes = train_dataset.number_of_classes
     model_klass = NNBaseModel.registry[model_name]
@@ -488,8 +511,8 @@ def train_nn_model(
         learning_rate=learning_rate
     )
     run_result = RunResult(
-        original_dataset_name=training_orig_ds_name,
-        embedder_name=training_embedder_name,
+        original_dataset_name=ds_name,
+        embedder_name=embedder_name,
         experiment_result=result
     )
     print(f"Saving experiment results at: {full_run_path!r}")
@@ -498,19 +521,26 @@ def train_nn_model(
 
 @cli.command()
 @click.option(
-    "--training-dataset-path",
+    "--ds",
     type=click.Path(exists=True, dir_okay=False),
     required=True
 )
 @click.option(
-    "--testing-dataset-path",
+    "--test-ds",
     type=click.Path(exists=True, dir_okay=False),
-    required=True
+    default=None,
+    help="The path to the test dataset. If used, it will be assumed that --ds is the training dataset."
 )
-def adaboost(training_dataset_path: str, testing_dataset_path: str):
+@click.option(
+    "--seed",
+    type=float,
+    default=pc.R_SEED,
+    help="The seed to use for splitting ds into training and test datasets. If --test-ds is provided, this will be ignored."
+)
+def adaboost(ds: str, test_ds: str, seed: float):
     print("Loading datasets...")
-    train_dataset = HumanChatBotDataset.load(training_dataset_path)
-    test_dataset = HumanChatBotDataset.load(testing_dataset_path)
+    train_dataset, test_dataset = get_training_and_testing_datasets(
+        ds, test_ds, seed)
     train_df = train_dataset.data
     test_df = test_dataset.data
     print("Adapting data for scikit-learn...")
