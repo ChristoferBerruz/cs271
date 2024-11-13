@@ -20,6 +20,25 @@ class HumanChatBotDataset(Dataset):
     """
     data: pl.DataFrame
 
+    def __post_init__(self):
+        # assert some useful properties on the CSV
+        assert "label" in self.data.columns, "Missing label column"
+        # modify the labels to be 0-indexed
+        present_labels = self.data["label"].unique().to_list()
+        # assert ascending order
+        present_labels.sort()
+        mappings = {label: i for i, label in enumerate(present_labels)}
+        should_apply_mappings = any(k != v for k, v in mappings.items())
+        if should_apply_mappings:
+            print(f"Applying mappings: {mappings}")
+            self.data = self.data.with_columns(pl.col(
+                "label").replace(mappings))
+        # drop the "type" column
+        if "type" in self.data.columns:
+            self.data.drop_in_place("type")
+        self.n_non_feature_columns = 1
+        self.number_of_classes = len(present_labels)
+
     @staticmethod
     def find_classnum_mapping(data: pl.DataFrame) -> Dict[str, int]:
         """
@@ -64,6 +83,12 @@ class HumanChatBotDataset(Dataset):
         )
         return cls(data)
 
+    def get_samples_as_X(self) -> pl.DataFrame:
+        return self.data.select(pl.col("*").exclude(["label"]))
+
+    def get_sample_labels(self) -> np.ndarray:
+        return self.data.select("label").to_numpy().ravel()
+
     @classmethod
     def from_train_test_raw_data(
         cls,
@@ -104,19 +129,15 @@ class HumanChatBotDataset(Dataset):
 
     @property
     def embedding_size(self) -> int:
-        # find the number of columns in the dataframe - 2
+        # find the number of columns in the dataframe
         # because the first two columns are the type and the label
-        return len(self.data.columns) - 2
-
-    @property
-    def number_of_classes(self) -> int:
-        return len(self.data["type"].unique().to_list())
+        return len(self.data.columns) - self.n_non_feature_columns
 
     def __len__(self) -> int:
         return len(self.data)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        tensor_values = self.data.row(idx)[2:]
+        tensor_values = self.data.row(idx)[self.n_non_feature_columns:]
         embedding = torch.tensor(tensor_values, dtype=torch.float32)
         label = self.data[idx]["label"].item()
         return embedding, label
@@ -192,7 +213,7 @@ class LazyHumanChatBotDataset(Dataset):
     Use this class when you want to lazily embed
     data on the fly.
 
-    Useful when there's a lot of data and creating all the 
+    Useful when there's a lot of data and creating all the
     embeddings at once would be too memory intensive.
     """
     data: pl.DataFrame

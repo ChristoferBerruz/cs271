@@ -545,13 +545,11 @@ def adaboost(ds: str, test_ds: str, seed: int):
     print("Loading datasets...")
     train_dataset, test_dataset = get_training_and_testing_datasets(
         ds, test_ds, seed)
-    train_df = train_dataset.data
-    test_df = test_dataset.data
     print("Adapting data for scikit-learn...")
-    train_X = train_df.select(pl.col("*").exclude(["type", "label"]))
-    _train_Y = train_df.select("type").to_numpy().ravel()
-    test_X = test_df.select(pl.col("*").exclude(["type", "label"]))
-    _test_Y = test_df.select("type").to_numpy().ravel()
+    train_X = train_dataset.get_samples_as_X()
+    _train_Y = train_dataset.get_sample_labels()
+    test_X = test_dataset.get_samples_as_X()
+    _test_Y = test_dataset.get_sample_labels()
     le = LabelEncoder()
     n_training = len(_train_Y)
     all_y = np.concatenate((_train_Y, _test_Y))
