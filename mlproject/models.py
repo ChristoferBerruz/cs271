@@ -68,6 +68,7 @@ class NNBaseModel(torch.nn.Module, ABC):
 
     def validate_after_epoch(
             self,
+            epoch: int,
             train_loader: DataLoader,
             test_loader: DataLoader,
             criterion: torch.nn.Module,
@@ -89,6 +90,7 @@ class NNBaseModel(torch.nn.Module, ABC):
         testing_accuracies.append(testing_accuracy)
         exp_result.training_classification_results.append(tr_make_up)
         exp_result.testing_classification_results.append(test_make_up)
+        print(f"Epoch: {epoch}, Training Loss: {training_loss}, Training Accuracy: {training_accuracy*100:.2f}%, Testing Loss: {testing_loss}, Testing Accuracy: {testing_accuracy*100:.2f}%")
 
 
 class LogisticRegression(NNBaseModel):
@@ -135,17 +137,12 @@ class LogisticRegression(NNBaseModel):
                 loss.backward()
                 optimizer.step()
             self.validate_after_epoch(
+                epoch,
                 train_loader,
                 test_loader,
                 criterion,
                 exp_result
             )
-            training_loss = exp_result.training_loss
-            training_accuracy = exp_result.training_accuracy
-            testing_loss = exp_result.testing_loss
-            testing_accuracy = exp_result.testing_accuracy
-
-            print(f"Epoch: {epoch}, Training Loss: {training_loss}, Training Accuracy: {training_accuracy*100:.2f}%, Testing Loss: {testing_loss}, Testing Accuracy: {testing_accuracy*100:.2f}%")
         return exp_result
 
 
@@ -192,16 +189,12 @@ class SimpleMLP(NNBaseModel):
                 optimizer.step()
 
             self.validate_after_epoch(
+                epoch,
                 train_loader,
                 test_loader,
                 criterion,
                 exp_result
             )
-            training_loss = exp_result.training_loss
-            training_accuracy = exp_result.training_accuracy
-            testing_loss = exp_result.testing_loss
-            testing_accuracy = exp_result.testing_accuracy
-            print(f"Epoch: {epoch}, Training Loss: {training_loss}, Training Accuracy: {training_accuracy*100:.2f}%, Testing Loss: {testing_loss}, Testing Accuracy: {testing_accuracy*100:.2f}%")
         return exp_result
 
 
@@ -254,14 +247,77 @@ class CNN2D(NNBaseModel):
                 loss.backward()
                 optimizer.step()
             self.validate_after_epoch(
+                epoch,
                 train_loader,
                 test_loader,
                 criterion,
                 exp_result
             )
-            training_loss = exp_result.training_loss
-            training_accuracy = exp_result.training_accuracy
-            testing_loss = exp_result.testing_loss
-            testing_accuracy = exp_result.testing_accuracy
-            print(f"Epoch: {epoch}, Training Loss: {training_loss}, Training Accuracy: {training_accuracy*100:.2f}%, Testing Loss: {testing_loss}, Testing Accuracy: {testing_accuracy*100:.2f}%")
+        return exp_result
+
+
+class CNNLstm(NNBaseModel):
+
+    def __init__(self, image_height: int, image_width: int, n_classes: int, kernel_size: int = 3, out_channels: int = 3):
+        super(CNNLstm, self).__init__()
+        self.cnn = torch.nn.Sequential(
+            torch.nn.Conv2d(1, out_channels, kernel_size=kernel_size),
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+            torch.nn.ReLU()
+        )
+        self.lstm_hidden_size = 128
+        self.lstm = torch.nn.LSTM(
+            input_size=out_channels *
+            (image_height - kernel_size + 1) *
+            (image_width - kernel_size + 1) // 4,
+            hidden_size=self.lstm_hidden_size,
+            num_layers=1,
+            batch_first=True
+        )
+        self.fc = torch.nn.Linear(self.lstm_hidden_size, n_classes)
+
+    def forward(self, x):
+        x = self.cnn(x)
+        x = x.view(x.size(0), -1)
+        x = x.unsqueeze(1)
+        x, _ = self.lstm(x)
+        x = self.fc(x[:, -1, :])
+        return x
+
+    def train(
+        self,
+        train_dataset: HumanChatBotDataset,
+        test_dataset: HumanChatBotDataset,
+        learning_rate: float = 0.001,
+        epochs: int = 100,
+    ):
+        optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+        criterion = torch.nn.CrossEntropyLoss()
+        training_batch_size = 32
+        train_loader = DataLoader(
+            train_dataset, batch_size=training_batch_size, shuffle=True)
+        test_loader = DataLoader(
+            test_dataset, batch_size=32, shuffle=False
+        )
+        exp_result = NeuralNetworkExperimentResult(
+            learning_rate=learning_rate,
+            training_batch_size=training_batch_size,
+            criterion_name="CrossEntropyLoss",
+            optimizer_name="Adam",
+            epochs=epochs
+        )
+        for epoch in range(epochs):
+            for text_vectors, text_labels in train_loader:
+                optimizer.zero_grad()
+                outputs = self(text_vectors)
+                loss = criterion(outputs, text_labels)
+                loss.backward()
+                optimizer.step()
+            self.validate_after_epoch(
+                epoch,
+                train_loader,
+                test_loader,
+                criterion,
+                exp_result
+            )
         return exp_result

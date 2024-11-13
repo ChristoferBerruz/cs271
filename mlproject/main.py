@@ -469,15 +469,15 @@ def train_nn_model(
     n_classes = train_dataset.number_of_classes
     model_klass = NNBaseModel.registry[model_name]
     model: NNBaseModel = None
-    if model_name == "CNN2D":
+    if model_name in ("CNN2D", "CNNLstm"):
         train_dataset = ImageByCrossMultiplicationDataset.from_human_chatbot_ds(
             train_dataset)
         test_dataset = ImageByCrossMultiplicationDataset.from_human_chatbot_ds(
             test_dataset)
         image_height = train_dataset.image_height
         image_width = train_dataset.image_width
-        model = CNN2D(image_height=image_height,
-                      image_width=image_width, n_classes=n_classes)
+        model = model_klass(image_height=image_height,
+                            image_width=image_width, n_classes=n_classes)
     else:
         model = model_klass(input_dim=embedding_size,
                             output_dim=n_classes)
