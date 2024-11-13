@@ -546,6 +546,53 @@ def train_nn_model(
     default=pc.R_SEED,
     help="The seed to use for splitting ds into training and test datasets. If --test-ds is provided, this will be ignored."
 )
+@click.option(
+    "--save-dir",
+    type=click.Path(resolve_path=True, file_okay=False, exists=True),
+    help="The directory to save the results.",
+    default="."
+)
+def convert_into_image_dataset(
+    ds: str,
+    test_ds: str,
+    seed: int,
+    save_dir: str
+):
+    ds_name, embedder_name = get_information_from_embedded_path(ds)
+    train_dataset, test_dataset = get_training_and_testing_datasets(
+        ds=ds, test_ds=test_ds, seed=seed)
+
+    train_path = os.path.join(
+        save_dir, f"{embedder_name}_{ds_name}_train")
+    test_path = os.path.join(save_dir, f"{embedder_name}_{ds_name}_test")
+    ImageByCrossMultiplicationDataset.convert_and_save(
+        train_dataset, train_path
+    )
+    ImageByCrossMultiplicationDataset.convert_and_save(
+        test_dataset, test_path
+    )
+
+
+@ cli.command()
+@ click.option(
+    "--ds",
+    type=click.Path(exists=True, dir_okay=False),
+    required=True
+
+
+)
+@ click.option(
+    "--test-ds",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="The path to the test dataset. If used, it will be assumed that --ds is the training dataset."
+)
+@ click.option(
+    "--seed",
+    type=int,
+    default=pc.R_SEED,
+    help="The seed to use for splitting ds into training and test datasets. If --test-ds is provided, this will be ignored."
+)
 def adaboost(ds: str, test_ds: str, seed: int):
     print("Loading datasets...")
     train_dataset, test_dataset = get_training_and_testing_datasets(
