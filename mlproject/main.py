@@ -411,11 +411,15 @@ def get_information_from_embedded_path(some_path: str) -> Tuple[str, str]:
     return orig_ds_name, embedder_name
 
 
-def get_training_and_testing_datasets(ds: str, test_ds: Optional[str], seed: Optional[float] = None) -> Tuple[HumanChatBotDataset, HumanChatBotDataset]:
+def get_training_and_testing_datasets(ds: str, test_ds: Optional[str], seed: Optional[int] = None) -> Tuple[HumanChatBotDataset, HumanChatBotDataset]:
     if ds and test_ds:
+        print(
+            f"Both ds and test_ds provided. Assuming {ds!r} is the training dataset and returning both datasets.")
         train_dataset = HumanChatBotDataset.load(ds)
         test_dataset = HumanChatBotDataset.load(test_ds)
     else:
+        print(
+            f"Only ds provided. Splitting {ds!r} into training and test datasets. Using seed = {seed}, train_percent = {pc.TRAIN_PERCENT}")
         # Load the csv file
         df = pl.read_csv(ds)
         # shuffle and split
@@ -443,7 +447,7 @@ def get_training_and_testing_datasets(ds: str, test_ds: Optional[str], seed: Opt
 )
 @click.option(
     "--seed",
-    type=float,
+    type=int,
     default=pc.R_SEED,
     help="The seed to use for splitting ds into training and test datasets. If --test-ds is provided, this will be ignored."
 )
@@ -474,7 +478,7 @@ def get_training_and_testing_datasets(ds: str, test_ds: Optional[str], seed: Opt
 def train_nn_model(
     ds: str,
     test_ds: str,
-    seed: float,
+    seed: int,
     model_name: str,
     epochs: int,
     learning_rate: float,
@@ -533,11 +537,11 @@ def train_nn_model(
 )
 @click.option(
     "--seed",
-    type=float,
+    type=int,
     default=pc.R_SEED,
     help="The seed to use for splitting ds into training and test datasets. If --test-ds is provided, this will be ignored."
 )
-def adaboost(ds: str, test_ds: str, seed: float):
+def adaboost(ds: str, test_ds: str, seed: int):
     print("Loading datasets...")
     train_dataset, test_dataset = get_training_and_testing_datasets(
         ds, test_ds, seed)
