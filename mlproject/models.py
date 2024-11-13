@@ -38,6 +38,8 @@ class NNBaseModel(torch.nn.Module, ABC):
         make_up = defaultdict(lambda: defaultdict(int))
         with torch.no_grad():
             for text_vectors, text_labels in data_loader:
+                text_vectors = text_vectors.to(self.device)
+                text_labels = text_labels.to(self.device)
                 outputs = self(text_vectors)
                 predicted = torch.argmax(outputs, dim=1)
                 correct += (predicted == text_labels).sum().item()
@@ -62,9 +64,15 @@ class NNBaseModel(torch.nn.Module, ABC):
         loss = 0.0
         with torch.no_grad():
             for text_vectors, text_labels in data_loader:
+                text_vectors = text_vectors.to(self.device)
+                text_labels = text_labels.to(self.device)
                 outputs = self(text_vectors)
                 loss += criterion(outputs, text_labels).item()
         return loss
+
+    def to(self, device: str):
+        self.device = device
+        return super().to(device)
 
     def validate_after_epoch(
             self,
@@ -74,6 +82,7 @@ class NNBaseModel(torch.nn.Module, ABC):
             criterion: torch.nn.Module,
             exp_result: NeuralNetworkExperimentResult
     ):
+        print(f"Validating after epoch: {epoch}")
         training_losses = exp_result.training_losses
         testing_losses = exp_result.testing_losses
         training_accuracies = exp_result.training_accuracies
@@ -182,6 +191,8 @@ class SimpleMLP(NNBaseModel):
         )
         for epoch in range(epochs):
             for _, (text_vectors, text_labels) in enumerate(train_loader):
+                text_vectors = text_vectors.to(self.device)
+                text_labels = text_labels.to(self.device)
                 optimizer.zero_grad()
                 outputs = self(text_vectors)
                 loss = criterion(outputs, text_labels)

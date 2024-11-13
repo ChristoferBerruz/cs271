@@ -484,6 +484,7 @@ def train_nn_model(
     learning_rate: float,
     save_dir: str
 ):
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     torch.set_default_dtype(torch.float32)
     # BEGIN: Validation of filenames
     ds_name, embedder_name = get_information_from_embedded_path(ds)
@@ -508,6 +509,10 @@ def train_nn_model(
     else:
         model = model_klass(input_dim=embedding_size,
                             output_dim=n_classes)
+
+    # send model to GPU
+    print(f"Sending model to device: {device}")
+    model.to(device)
     result = model.train(
         train_dataset=train_dataset,
         test_dataset=test_dataset,
