@@ -140,6 +140,8 @@ class LogisticRegression(NNBaseModel):
         )
         for epoch in range(epochs):
             for _, (text_vectors, text_labels) in enumerate(train_loader):
+                text_vectors = text_vectors.to(self.device)
+                text_labels = text_labels.to(self.device)
                 optimizer.zero_grad()
                 outputs = self(text_vectors)
                 loss = criterion(outputs, text_labels)
@@ -252,6 +254,8 @@ class CNN2D(NNBaseModel):
         )
         for epoch in range(epochs):
             for text_vectors, text_labels in train_loader:
+                text_vectors = text_vectors.to(self.device)
+                text_labels = text_labels.to(self.device)
                 optimizer.zero_grad()
                 outputs = self(text_vectors)
                 loss = criterion(outputs, text_labels)
@@ -319,6 +323,8 @@ class CNNLstm(NNBaseModel):
         )
         for epoch in range(epochs):
             for text_vectors, text_labels in train_loader:
+                text_vectors = text_vectors.to(self.device)
+                text_labels = text_labels.to(self.device)
                 optimizer.zero_grad()
                 outputs = self(text_vectors)
                 loss = criterion(outputs, text_labels)
