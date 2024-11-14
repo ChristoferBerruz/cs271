@@ -161,7 +161,7 @@ class ImageByCrossMultiplicationDataset(Dataset):
     def from_human_chatbot_ds(cls, ds: HumanChatBotDataset, apply_transforms: bool = True) -> "ImageByCrossMultiplicationDataset":
         """Create a dataset of images by calculating the cross multiplication. For each embedding
         of size vector_size, the cross multiplication is defined as the matrix multiplication
-        of (vector_size, 1) @ (1, vector_size) which results in a (vector_size, vector_size) matrix.
+        of (vector_size, 1) @(1, vector_size) which results in a (vector_size, vector_size) matrix.
 
         Args:
             ds (HumanChatBotDataset): the human chatbot dataset
@@ -196,7 +196,7 @@ class ImageByCrossMultiplicationDataset(Dataset):
         vector_size = len(embedding)
         embedding = embedding.view(1, vector_size)
         # calculate the cross multiplication
-        cross_mult = embedding.T @ embedding
+        cross_mult = embedding.T @embedding
         # reshape to allow for the concept of a channel
         cross_mult = cross_mult.view(1, vector_size, vector_size)
         return cross_mult
@@ -251,11 +251,11 @@ class ImageByCrossMultiplicationDataset(Dataset):
     def __len__(self) -> int:
         return len(self.images)
 
-    @ property
+    @property
     def image_height(self) -> int:
         return self.images.shape[2]
 
-    @ property
+    @property
     def image_width(self) -> int:
         return self.images.shape[3]
 
@@ -263,7 +263,7 @@ class ImageByCrossMultiplicationDataset(Dataset):
         return self.images[idx], self.labels[idx]
 
 
-@ dataclass
+@dataclass
 class ImageFolderDataset(ImageFolder):
 
     def __init__(self, root: str):
@@ -275,7 +275,7 @@ class ImageFolderDataset(ImageFolder):
         self.image_height, self.image_width = self[0][0].shape[1:]
 
 
-@ dataclass
+@dataclass
 class LazyHumanChatBotDataset(Dataset):
     """
     A PyTorch Dataset class for the Human Chat Bot dataset.
@@ -305,7 +305,7 @@ class LazyHumanChatBotDataset(Dataset):
         """
         return self.article_type_to_classnum[article_type]
 
-    @ classmethod
+    @classmethod
     def from_raw_data(
         cls,
         raw_data: RawHumanChatBotData,
