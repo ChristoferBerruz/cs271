@@ -14,6 +14,8 @@ from tqdm import tqdm
 
 from PIL import Image
 
+import concurrent.futures
+
 
 @dataclass
 class HumanChatBotDataset(Dataset):
@@ -219,22 +221,41 @@ class ImageByCrossMultiplicationDataset(Dataset):
         image_transform = transforms.ToPILImage()
         print(
             f"Generating images from embeddings and saving at: {root_save_path!r}")
-        for i in tqdm(range(len(ds))):
-            embedding, label = ds[i]
-            cross_mult = cls.get_embedding_as_image_tensor(embedding)
-            image = image_transform(cross_mult)
-            full_save_path = os.path.join(
-                root_save_path, str(label), f"{i}.png")
-            image.save(full_save_path)
+
+        # Take advantage of the fact that this operation is I/O bound
+        # and use threads to parallelize the saving of images.
+        # No need to worry about race conditions since each thread
+        # writes to a different path.
+        def parallel_generate_save(start_idx, end_idx):
+            save_paths = []
+            images = []
+            for i in range(start_idx, end_idx):
+                embedding, label = ds[i]
+                image_save_path = os.path.join(
+                    root_save_path, str(label), f"{i}.png")
+                cross_mult = cls.get_embedding_as_image_tensor(embedding)
+                image = image_transform(cross_mult)
+                images.append(image)
+                save_paths.append(image_save_path)
+            for image, save_path in zip(images, save_paths):
+                image.save(save_path)
+
+        # batch them by 1000
+        args = [
+            (i, min(i + 1000, len(ds))) for i in range(0, len(ds), 1000)
+        ]
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            list(
+                tqdm(executor.map(lambda x: parallel_generate_save(*x), args), total=len(args)))
 
     def __len__(self) -> int:
         return len(self.images)
 
-    @property
+    @ property
     def image_height(self) -> int:
         return self.images.shape[2]
 
-    @property
+    @ property
     def image_width(self) -> int:
         return self.images.shape[3]
 
@@ -242,7 +263,7 @@ class ImageByCrossMultiplicationDataset(Dataset):
         return self.images[idx], self.labels[idx]
 
 
-@dataclass
+@ dataclass
 class ImageFolderDataset(ImageFolder):
 
     def __init__(self, root: str):
@@ -254,7 +275,7 @@ class ImageFolderDataset(ImageFolder):
         self.image_height, self.image_width = self[0][0].shape[1:]
 
 
-@dataclass
+@ dataclass
 class LazyHumanChatBotDataset(Dataset):
     """
     A PyTorch Dataset class for the Human Chat Bot dataset.
@@ -284,7 +305,7 @@ class LazyHumanChatBotDataset(Dataset):
         """
         return self.article_type_to_classnum[article_type]
 
-    @classmethod
+    @ classmethod
     def from_raw_data(
         cls,
         raw_data: RawHumanChatBotData,
