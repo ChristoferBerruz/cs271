@@ -631,7 +631,7 @@ def adaboost(ds: str, test_ds: str, seed: int, save_dir: str):
         original_ds_name=ds_name,
         embedder_name=embedder_name,
         accuracy=accuracy,
-        confusion_matrix=makeup
+        classification_makeup=makeup
     )
     print(f"Accuracy: {accuracy*100:.4f}%")
     print("Saving results...")
