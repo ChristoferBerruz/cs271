@@ -1,8 +1,9 @@
 import click
 import os
+from collections import defaultdict
 from functools import wraps
 from typing import Optional, Tuple
-from mlproject.data_processing import RawHumanChatBotData, WikihowSubset, NeuralNetworkExperimentResult, RunResult
+from mlproject.data_processing import RawHumanChatBotData, WikihowSubset, RunResult, AdaboostResult
 from mlproject.datasets import HumanChatBotDataset, ImageByCrossMultiplicationDataset
 from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder
 from mlproject.models import NNBaseModel, CNN2D
@@ -573,30 +574,40 @@ def convert_into_image_dataset(
     )
 
 
-@ cli.command()
-@ click.option(
+@cli.command()
+@click.option(
     "--ds",
     type=click.Path(exists=True, dir_okay=False),
     required=True
 
 
 )
-@ click.option(
+@click.option(
     "--test-ds",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
     help="The path to the test dataset. If used, it will be assumed that --ds is the training dataset."
 )
-@ click.option(
+@click.option(
     "--seed",
     type=int,
     default=pc.R_SEED,
     help="The seed to use for splitting ds into training and test datasets. If --test-ds is provided, this will be ignored."
 )
-def adaboost(ds: str, test_ds: str, seed: int):
+@click.option(
+    "--save-dir",
+    type=click.Path(resolve_path=True, file_okay=False, exists=True),
+    help="The directory to save the results.",
+    default="."
+)
+def adaboost(ds: str, test_ds: str, seed: int, save_dir: str):
     print("Loading datasets...")
     train_dataset, test_dataset = get_training_and_testing_datasets(
         ds, test_ds, seed)
+    ds_name, embedder_name = get_information_from_embedded_path(ds)
+
+    results_path = os.path.join(
+        save_dir, f"{ds_name}_{embedder_name}_adaboost.json")
     print("Adapting data for scikit-learn...")
     train_X = train_dataset.get_samples_as_X()
     _train_Y = train_dataset.get_sample_labels()
@@ -612,7 +623,19 @@ def adaboost(ds: str, test_ds: str, seed: int):
     model = AdaBoostClassifier(algorithm="SAMME")
     model.fit(train_X, train_Y)
     accuracy = model.score(test_X, test_Y)
+    predictions = model.predict(test_X)
+    makeup = defaultdict(lambda: defaultdict(int))
+    for true, pred in zip(test_Y, predictions):
+        makeup[pred][true] += 1
+    adaboost_result = AdaboostResult(
+        original_ds_name=ds_name,
+        embedder_name=embedder_name,
+        accuracy=accuracy,
+        confusion_matrix=makeup
+    )
     print(f"Accuracy: {accuracy*100:.4f}%")
+    print("Saving results...")
+    adaboost_result.save(results_path)
 
 
 def main():

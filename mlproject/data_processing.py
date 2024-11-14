@@ -281,3 +281,22 @@ class RunResult:
         with open(path, mode="r") as f:
             json_obj = json.load(f)
             return cls.from_dict(json_obj)
+
+
+@dataclass_json
+@dataclass
+class AdaboostResult:
+    original_ds_name: str
+    embedder_name: str
+    accuracy: float
+    classification_makeup: Dict[int, Dict[int, int]]
+
+    def save(self, path: str):
+        with open(path, mode="w") as f:
+            json.dump(self.to_dict(), f)
+
+    @classmethod
+    def load(cls, path: str) -> "AdaboostResult":
+        with open(path, mode="r") as f:
+            json_obj = json.load(f)
+            return cls.from_dict(json_obj)
