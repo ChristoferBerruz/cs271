@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from PIL import Image
 
-import concurrent.futures
+import multiprocessing
 
 
 @dataclass
@@ -222,31 +222,22 @@ class ImageByCrossMultiplicationDataset(Dataset):
         print(
             f"Generating images from embeddings and saving at: {root_save_path!r}")
 
-        # Take advantage of the fact that this operation is I/O bound
-        # and use threads to parallelize the saving of images.
-        # No need to worry about race conditions since each thread
-        # writes to a different path.
-        def parallel_generate_save(start_idx, end_idx):
-            save_paths = []
-            images = []
-            for i in range(start_idx, end_idx):
+        def generate_and_save(embedding, save_path):
+            cross_mult = cls.get_embedding_as_image_tensor(embedding)
+            image = image_transform(cross_mult)
+            image.save(save_path)
+            
+        # use multiprocessing to parallelize the saving of images
+        with multiprocessing.Pool() as pool:
+            for i in tqdm(range(len(ds))):
                 embedding, label = ds[i]
-                image_save_path = os.path.join(
+                save_path = os.path.join(
                     root_save_path, str(label), f"{i}.png")
-                cross_mult = cls.get_embedding_as_image_tensor(embedding)
-                image = image_transform(cross_mult)
-                images.append(image)
-                save_paths.append(image_save_path)
-            for image, save_path in zip(images, save_paths):
-                image.save(save_path)
+                pool.apply_async(generate_and_save, args=(embedding, save_path))
+            pool.close()
+            pool.join()
 
-        # batch them by 1000
-        args = [
-            (i, min(i + 1000, len(ds))) for i in range(0, len(ds), 1000)
-        ]
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            list(
-                tqdm(executor.map(lambda x: parallel_generate_save(*x), args), total=len(args)))
+        
 
     def __len__(self) -> int:
         return len(self.images)
