@@ -112,9 +112,13 @@ class LogisticRegression(NNBaseModel):
     def __init__(self, input_dim: int, output_dim: int):
         super(LogisticRegression, self).__init__()
         self.linear = torch.nn.Linear(input_dim, output_dim)
+        if output_dim == 2:
+            self.last_activation = torch.sigmoid
+        else:
+            self.last_activation = torch.softmax
 
     def forward(self, x):
-        return torch.sigmoid(self.linear(x))
+        return self.last_activation(self.linear(x))
 
     def train(
         self,
@@ -165,10 +169,14 @@ class SimpleMLP(NNBaseModel):
         super(SimpleMLP, self).__init__()
         self.fc1 = torch.nn.Linear(input_dim, 128)
         self.fc2 = torch.nn.Linear(128, output_dim)
+        if output_dim == 2:
+            self.last_activation = torch.sigmoid
+        else:
+            self.last_activation = torch.softmax
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
-        x = torch.sigmoid(self.fc2(x))
+        x = self.last_activation(self.fc2(x))
         return x
 
     def train(
@@ -222,12 +230,16 @@ class CNN2D(NNBaseModel):
         self.fc1 = torch.nn.Linear(
             out_channels * (image_height - kernel_size + 1) * (image_width - kernel_size + 1) // 4, 32)
         self.fc2 = torch.nn.Linear(32, n_classes)
+        if n_classes == 2:
+            self.last_activation = torch.sigmoid
+        else:
+            self.last_activation = torch.softmax
 
     def forward(self, x):
         x = self.pool_1(torch.relu(self.conv1(x)))
         x = torch.flatten(x, 1)
         x = torch.relu(self.fc1(x))
-        x = torch.sigmoid(self.fc2(x))
+        x = self.last_activation(self.fc2(x))
         return x
 
     def train(
