@@ -626,7 +626,9 @@ def adaboost(ds: str, test_ds: str, seed: int, save_dir: str):
     predictions = model.predict(test_X)
     makeup = defaultdict(lambda: defaultdict(int))
     for true, pred in zip(test_Y, predictions):
-        makeup[pred][true] += 1
+        i = int(true)
+        j = int(pred)
+        makeup[i][j] += 1
     adaboost_result = AdaboostResult(
         original_ds_name=ds_name,
         embedder_name=embedder_name,
