@@ -12,10 +12,6 @@ from mlproject.embeddings import ArticleEmbedder
 import os
 from tqdm import tqdm
 
-from PIL import Image
-
-from concurrent.futures import ProcessPoolExecutor
-
 
 @dataclass
 class HumanChatBotDataset(Dataset):
@@ -152,8 +148,13 @@ class HumanChatBotDataset(Dataset):
 def get_embedding_as_image_tensor(embedding: torch.Tensor) -> torch.Tensor:
     vector_size = len(embedding)
     embedding = embedding.view(1, vector_size)
+    # These images are black and white, but the vectors might have small features
+    # normalize each vector to be between 0 and 1
+    embedding = (embedding - embedding.min()) / (embedding.max() - embedding.min())
     # calculate the cross multiplication
     cross_mult = embedding.T @ embedding
+    # scale up the cross multiplication to be between 0 and 255
+    cross_mult = cross_mult * 255
     # reshape to allow for the concept of a channel
     cross_mult = cross_mult.view(1, vector_size, vector_size)
     return cross_mult
@@ -166,7 +167,7 @@ def generate_and_save(embedding, save_path):
     image = tensor_to_pil(cross_mult)
     image.save(save_path)
 
-    
+
 @dataclass
 class ImageByCrossMultiplicationDataset(Dataset):
     """This dataset contains embeddings expressed as the
@@ -225,18 +226,10 @@ class ImageByCrossMultiplicationDataset(Dataset):
         print(
             f"Generating images from embeddings and saving at: {root_save_path!r}")
 
-        print("Queuing up image generation tasks")
-        args_list = [
-            (ds[i][0], os.path.join(
-                root_save_path, str(ds[i][1]), f"{i}.png"))
-            for i in range(len(ds))
-        ]
-        # use multiprocessing to parallelize the saving of images
-        print("Starting image generation tasks")
-        with ProcessPoolExecutor() as executor:
-            futures = [executor.submit(generate_and_save, *args)
-                       for args in args_list]
-            results = [future.result() for future in futures]
+        for i in tqdm(range(len(ds))):
+            embedding, label = ds[i]
+            save_path = os.path.join(root_save_path, str(label), f"{i}.png")
+            generate_and_save(embedding, save_path)
         print("Image generation tasks completed")
 
         
