@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from PIL import Image
 
-import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 
 
 @dataclass
@@ -147,8 +147,26 @@ class HumanChatBotDataset(Dataset):
         embedding = torch.tensor(tensor_values, dtype=torch.float32)
         label = self.data[idx]["label"].item()
         return embedding, label
+    
 
+def get_embedding_as_image_tensor(embedding: torch.Tensor) -> torch.Tensor:
+    vector_size = len(embedding)
+    embedding = embedding.view(1, vector_size)
+    # calculate the cross multiplication
+    cross_mult = embedding.T @ embedding
+    # reshape to allow for the concept of a channel
+    cross_mult = cross_mult.view(1, vector_size, vector_size)
+    return cross_mult
 
+normalization_transform = transforms.Normalize((0.5,), (0.5,))
+tensor_to_pil = transforms.ToPILImage()
+
+def generate_and_save(embedding, save_path):
+    cross_mult = get_embedding_as_image_tensor(embedding)
+    image = tensor_to_pil(cross_mult)
+    image.save(save_path)
+
+    
 @dataclass
 class ImageByCrossMultiplicationDataset(Dataset):
     """This dataset contains embeddings expressed as the
@@ -173,14 +191,14 @@ class ImageByCrossMultiplicationDataset(Dataset):
         n_samples = len(ds)
         labels = []
         images = []
-        normalized_transform = cls.get_default_transform()
+        normalized_transform = normalization_transform
 
         # By definition, images are (C, H, W) tensors
         print(
             f"Generating image dataset from {n_samples} embedding samples")
         for i in tqdm(range(n_samples)):
             embedding, label = ds[i]
-            cross_mult = cls.get_embedding_as_image_tensor(embedding)
+            cross_mult = get_embedding_as_image_tensor(embedding)
             if apply_transforms:
                 cross_mult = normalized_transform(cross_mult)
 
@@ -190,20 +208,6 @@ class ImageByCrossMultiplicationDataset(Dataset):
         embeddings = torch.stack(images)
         labels = torch.tensor(labels, dtype=torch.long)
         return cls(embeddings, labels)
-
-    @staticmethod
-    def get_embedding_as_image_tensor(embedding: torch.Tensor) -> torch.Tensor:
-        vector_size = len(embedding)
-        embedding = embedding.view(1, vector_size)
-        # calculate the cross multiplication
-        cross_mult = embedding.T @embedding
-        # reshape to allow for the concept of a channel
-        cross_mult = cross_mult.view(1, vector_size, vector_size)
-        return cross_mult
-
-    @staticmethod
-    def get_default_transform():
-        return transforms.Normalize((0.5,), (0.5,))
 
     @classmethod
     def convert_and_save(cls, ds: HumanChatBotDataset, root_save_path: str):
@@ -218,24 +222,22 @@ class ImageByCrossMultiplicationDataset(Dataset):
         for i in range(n_classes):
             class_dir = os.path.join(root_save_path, str(i))
             os.makedirs(class_dir, exist_ok=True)
-        image_transform = transforms.ToPILImage()
         print(
             f"Generating images from embeddings and saving at: {root_save_path!r}")
 
-        def generate_and_save(embedding, save_path):
-            cross_mult = cls.get_embedding_as_image_tensor(embedding)
-            image = image_transform(cross_mult)
-            image.save(save_path)
-            
+        print("Queuing up image generation tasks")
+        args_list = [
+            (ds[i][0], os.path.join(
+                root_save_path, str(ds[i][1]), f"{i}.png"))
+            for i in range(len(ds))
+        ]
         # use multiprocessing to parallelize the saving of images
-        with multiprocessing.Pool() as pool:
-            for i in tqdm(range(len(ds))):
-                embedding, label = ds[i]
-                save_path = os.path.join(
-                    root_save_path, str(label), f"{i}.png")
-                pool.apply_async(generate_and_save, args=(embedding, save_path))
-            pool.close()
-            pool.join()
+        print("Starting image generation tasks")
+        with ProcessPoolExecutor() as executor:
+            futures = [executor.submit(generate_and_save, *args)
+                       for args in args_list]
+            results = [future.result() for future in futures]
+        print("Image generation tasks completed")
 
         
 
