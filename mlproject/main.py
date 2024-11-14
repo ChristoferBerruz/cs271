@@ -549,7 +549,7 @@ def train_nn_model(
 )
 @click.option(
     "--save-dir",
-    type=click.Path(resolve_path=True, file_okay=False, exists=True),
+    type=click.Path(),
     help="The directory to save the results.",
     default="."
 )
@@ -566,6 +566,8 @@ def convert_into_image_dataset(
     train_path = os.path.join(
         save_dir, f"{embedder_name}_{ds_name}_train")
     test_path = os.path.join(save_dir, f"{embedder_name}_{ds_name}_test")
+    os.makedirs(train_path, exist_ok=True)
+    os.makedirs(test_path, exist_ok=True)
     ImageByCrossMultiplicationDataset.convert_and_save(
         train_dataset, train_path
     )
