@@ -506,15 +506,18 @@ def train_nn_model(
         image_height = train_dataset.image_height
         image_width = train_dataset.image_width
         model = model_klass(image_height=image_height,
-                            image_width=image_width, n_classes=n_classes)
+                            image_width=image_width,
+                            n_classes=n_classes,
+                            learning_rate=learning_rate
+                            )
     else:
         model = model_klass(input_dim=embedding_size,
-                            output_dim=n_classes)
+                            output_dim=n_classes, learning_rate=learning_rate)
 
     # send model to GPU
     print(f"Sending model to device: {device}")
     model.to(device)
-    result = model.train(
+    result = model.run_training(
         train_dataset=train_dataset,
         test_dataset=test_dataset,
         epochs=epochs,

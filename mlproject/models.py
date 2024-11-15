@@ -110,9 +110,14 @@ class LogisticRegression(NNBaseModel):
     NOT TO BE CONFUSED WITH THE SCIKIT-LEARN LOGISTIC REGRESSION MODEL.
     """
 
-    def __init__(self, input_dim: int, output_dim: int):
+    def __init__(self, input_dim: int, output_dim: int, learning_rate: float = 0.001):
         super(LogisticRegression, self).__init__()
         self.linear = torch.nn.Linear(input_dim, output_dim)
+        self.optimizer = torch.optim.SGD(self.parameters(), lr=learning_rate)
+        self.criterion = torch.nn.CrossEntropyLoss()
+        self.criterion_name = f"{self.criterion.__class__.__name__}"
+        self.optimizer_name = f"{self.optimizer.__class__.__name__}"
+        self.learning_rate = learning_rate
 
     def forward(self, x):
         return torch.relu(self.linear(x))
@@ -121,11 +126,9 @@ class LogisticRegression(NNBaseModel):
         self,
         train_dataset: HumanChatBotDataset,
         test_dataset: HumanChatBotDataset,
-        epochs: int,
-        learning_rate: float
+        epochs: int
     ) -> NeuralNetworkExperimentResult:
-        optimizer = torch.optim.SGD(self.parameters(), lr=learning_rate)
-        criterion = torch.nn.CrossEntropyLoss()
+        
         training_batch_size = 32
         train_loader = DataLoader(
             train_dataset, batch_size=training_batch_size, shuffle=True)
@@ -133,12 +136,14 @@ class LogisticRegression(NNBaseModel):
         print(
             f"Proceeding to train {self.__class__.__name__} for {epochs} epochs...")
         exp_result = NeuralNetworkExperimentResult(
-            learning_rate=learning_rate,
+            learning_rate=self.learning_rate,
             training_batch_size=training_batch_size,
-            optimizer_name="SGD",
-            criterion_name="CrossEntropyLoss",
+            optimizer_name=self.optimizer_name,
+            criterion_name=self.criterion_name,
             epochs=epochs
         )
+        optimizer = self.optimizer
+        criterion = self.criterion
         for epoch in range(epochs):
             for _, (text_vectors, text_labels) in enumerate(train_loader):
                 text_vectors = text_vectors.to(self.device)
@@ -162,10 +167,15 @@ class SimpleMLP(NNBaseModel):
     """A MLP with a single hidden layer of 128 neurons.
     """
 
-    def __init__(self, input_dim: int, output_dim: int):
+    def __init__(self, input_dim: int, output_dim: int, learning_rate: float = 0.001):
         super(SimpleMLP, self).__init__()
         self.fc1 = torch.nn.Linear(input_dim, 128)
         self.fc2 = torch.nn.Linear(128, output_dim)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+        self.criterion = torch.nn.CrossEntropyLoss()
+        self.learning_rate = learning_rate
+        self.optimizer_name = f"{self.optimizer.__class__.__name__}"
+        self.criterion_name = f"{self.criterion.__class__.__name__}"
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -176,19 +186,18 @@ class SimpleMLP(NNBaseModel):
         self,
         train_dataset: HumanChatBotDataset,
         test_dataset: HumanChatBotDataset,
-        epochs: int,
-        learning_rate: float
+        epochs: int
     ):
-        optimizer = torch.optim.SGD(self.parameters(), lr=learning_rate)
-        criterion = torch.nn.CrossEntropyLoss()
+        optimizer = self.optimizer
+        criterion = self.criterion
         train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
         test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
         print(
             f"Proceeding to train {self.__class__.__name__} for {epochs} epochs...")
         exp_result = NeuralNetworkExperimentResult(
-            learning_rate=learning_rate,
-            optimizer_name="SGD",
-            criterion_name="CrossEntropyLoss",
+            learning_rate=self.learning_rate,
+            optimizer_name=self.optimizer_name,
+            criterion_name=self.criterion_name,
             epochs=epochs,
             training_batch_size=32
         )
@@ -214,7 +223,7 @@ class SimpleMLP(NNBaseModel):
 
 class CNN2D(NNBaseModel):
 
-    def __init__(self, image_height: int, image_width: int, n_classes: int, kernel_size: int = 3, out_channels: int = 3):
+    def __init__(self, image_height: int, image_width: int, n_classes: int, kernel_size: int = 3, out_channels: int = 3, learning_rate: float = 0.001):
         # TODO: Conside expanding the neural network with batchnorm
         # dropout, and the like.
         super(CNN2D, self).__init__()
@@ -223,6 +232,11 @@ class CNN2D(NNBaseModel):
         self.fc1 = torch.nn.Linear(
             out_channels * (image_height - kernel_size + 1) * (image_width - kernel_size + 1) // 4, 32)
         self.fc2 = torch.nn.Linear(32, n_classes)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+        self.criterion = torch.nn.CrossEntropyLoss()
+        self.learning_rate = learning_rate
+        self.criterion_name = f"{self.criterion.__class__.__name__}"
+        self.optimizer_name = f"{self.optimizer.__class__.__name__}"
 
     def forward(self, x):
         x = self.pool_1(torch.relu(self.conv1(x)))
@@ -235,11 +249,8 @@ class CNN2D(NNBaseModel):
         self,
         train_dataset: HumanChatBotDataset,
         test_dataset: HumanChatBotDataset,
-        learning_rate: float = 0.001,
         epochs: int = 100,
     ):
-        optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
-        criterion = torch.nn.CrossEntropyLoss()
         training_batch_size = 32
         train_loader = DataLoader(
             train_dataset, batch_size=training_batch_size, shuffle=True)
@@ -247,12 +258,14 @@ class CNN2D(NNBaseModel):
             test_dataset, batch_size=32, shuffle=False
         )
         exp_result = NeuralNetworkExperimentResult(
-            learning_rate=learning_rate,
+            learning_rate=self.learning_rate,
             training_batch_size=training_batch_size,
-            criterion_name="CrossEntropyLoss",
-            optimizer_name="Adam",
+            criterion_name=self.criterion_name,
+            optimizer_name=self.optimizer_name,
             epochs=epochs
         )
+        optimizer = self.optimizer
+        criterion = self.criterion
         for epoch in range(epochs):
             for text_vectors, text_labels in train_loader:
                 text_vectors = text_vectors.to(self.device)
@@ -274,7 +287,15 @@ class CNN2D(NNBaseModel):
 
 class CNNLstm(NNBaseModel):
 
-    def __init__(self, image_height: int, image_width: int, n_classes: int, kernel_size: int = 3, out_channels: int = 3):
+    def __init__(
+            self,
+            image_height: int,
+            image_width: int,
+            n_classes: int,
+            kernel_size: int = 3,
+            out_channels: int = 3,
+            learning_rate: float = 0.001
+        ):
         super(CNNLstm, self).__init__()
         self.cnn = torch.nn.Sequential(
             torch.nn.Conv2d(1, out_channels, kernel_size=kernel_size),
@@ -291,6 +312,11 @@ class CNNLstm(NNBaseModel):
             batch_first=True
         )
         self.fc = torch.nn.Linear(self.lstm_hidden_size, n_classes)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+        self.criterion = torch.nn.CrossEntropyLoss()
+        self.learning_rate = learning_rate
+        self.criterion_name = f"{self.criterion.__class__.__name__}"
+        self.optimizer_name = f"{self.optimizer.__class__.__name__}"
 
     def forward(self, x):
         x = self.cnn(x)
@@ -304,11 +330,10 @@ class CNNLstm(NNBaseModel):
         self,
         train_dataset: HumanChatBotDataset,
         test_dataset: HumanChatBotDataset,
-        learning_rate: float = 0.001,
         epochs: int = 100,
     ):
-        optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
-        criterion = torch.nn.CrossEntropyLoss()
+        optimizer = self.optimizer
+        criterion = self.criterion
         training_batch_size = 32
         train_loader = DataLoader(
             train_dataset, batch_size=training_batch_size, shuffle=True)
@@ -316,10 +341,10 @@ class CNNLstm(NNBaseModel):
             test_dataset, batch_size=32, shuffle=False
         )
         exp_result = NeuralNetworkExperimentResult(
-            learning_rate=learning_rate,
+            learning_rate=self.learning_rate,
             training_batch_size=training_batch_size,
-            criterion_name="CrossEntropyLoss",
-            optimizer_name="Adam",
+            criterion_name=self.criterion_name,
+            optimizer_name=self.optimizer_name,
             epochs=epochs
         )
         for epoch in range(epochs):
