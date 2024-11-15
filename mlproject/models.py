@@ -24,7 +24,7 @@ class NNBaseModel(torch.nn.Module, ABC):
         return super().__init_subclass__()
 
     @abstractmethod
-    def train(
+    def run_training(
         self,
         train_dataset: HumanChatBotDataset,
         test_dataset: HumanChatBotDataset,
@@ -117,7 +117,7 @@ class LogisticRegression(NNBaseModel):
     def forward(self, x):
         return torch.relu(self.linear(x))
 
-    def train(
+    def run_training(
         self,
         train_dataset: HumanChatBotDataset,
         test_dataset: HumanChatBotDataset,
@@ -172,7 +172,7 @@ class SimpleMLP(NNBaseModel):
         x = torch.softmax(self.fc2(x), dim=1)
         return x
 
-    def train(
+    def run_training(
         self,
         train_dataset: HumanChatBotDataset,
         test_dataset: HumanChatBotDataset,
@@ -231,7 +231,7 @@ class CNN2D(NNBaseModel):
         x = torch.softmax(self.fc2(x), dim=1)
         return x
 
-    def train(
+    def run_training(
         self,
         train_dataset: HumanChatBotDataset,
         test_dataset: HumanChatBotDataset,
@@ -300,7 +300,7 @@ class CNNLstm(NNBaseModel):
         x = torch.softmax(self.fc(x[:, -1, :]),  dim=1)
         return x
 
-    def train(
+    def run_training(
         self,
         train_dataset: HumanChatBotDataset,
         test_dataset: HumanChatBotDataset,
