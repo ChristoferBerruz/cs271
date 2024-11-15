@@ -490,7 +490,9 @@ def train_nn_model(
     # BEGIN: Validation of filenames
     ds_name, embedder_name = get_information_from_embedded_path(ds)
     # END: Validation of filenames
-    run_f_name = f"{ds_name}_{embedder_name}_{model_name}.json".lower()
+    # base identifier
+    identifier = f"{ds_name}_{embedder_name}_{model_name}"
+    run_f_name = f"{identifier}.json".lower()
     full_run_path = Path(save_dir).joinpath(run_f_name)
     train_dataset, test_dataset = get_training_and_testing_datasets(
         ds=ds, test_ds=test_ds, seed=seed)
@@ -530,6 +532,19 @@ def train_nn_model(
     )
     print(f"Saving experiment results at: {full_run_path!r}")
     run_result.save(full_run_path)
+
+    # save the model and its optimizer
+    model_dir = os.path.join(save_dir, f"{identifier}")
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, f"{identifier}.model")
+    optimizer_path = os.path.join(model_dir, f"{identifier}.optimizer")
+    print(f"Saving model at: {model_path!r}")
+    torch.save(model.state_dict(), model_path)
+    if getattr(model, "optimizer", None):
+        print(f"Saving model's optimizer at: {optimizer_path!r}")
+        torch.save(model.optimizer.state_dict(), optimizer_path)
+    else:
+        print("No optimizer found. Skipping saving optimizer.")
 
 
 @cli.command()
