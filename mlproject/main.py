@@ -563,9 +563,11 @@ def convert_into_image_dataset(
     train_dataset, test_dataset = get_training_and_testing_datasets(
         ds=ds, test_ds=test_ds, seed=seed)
 
+    subfolder = os.path.join(save_dir, f"{embedder_name}_{ds_name}")
+    os.makedirs(subfolder, exist_ok=True)
     train_path = os.path.join(
-        save_dir, f"{embedder_name}_{ds_name}_train")
-    test_path = os.path.join(save_dir, f"{embedder_name}_{ds_name}_test")
+        subfolder, f"{embedder_name}_{ds_name}_train")
+    test_path = os.path.join(subfolder, f"{embedder_name}_{ds_name}_test")
     os.makedirs(train_path, exist_ok=True)
     os.makedirs(test_path, exist_ok=True)
     ImageByCrossMultiplicationDataset.convert_and_save(
