@@ -41,7 +41,8 @@ class NNBaseModel(torch.nn.Module, ABC):
                 text_vectors = text_vectors.to(self.device)
                 text_labels = text_labels.to(self.device)
                 outputs = self(text_vectors)
-                predicted = torch.argmax(outputs, dim=1)
+                normalized_outputs = torch.softmax(outputs, dim=1)
+                predicted = torch.argmax(normalized_outputs, dim=1)
                 correct += (predicted == text_labels).sum().item()
                 # The predicted make "the buckets"
                 # the text_labels is the "true" class
@@ -112,13 +113,9 @@ class LogisticRegression(NNBaseModel):
     def __init__(self, input_dim: int, output_dim: int):
         super(LogisticRegression, self).__init__()
         self.linear = torch.nn.Linear(input_dim, output_dim)
-        if output_dim == 2:
-            self.last_activation = torch.sigmoid
-        else:
-            self.last_activation = torch.softmax
 
     def forward(self, x):
-        return self.last_activation(self.linear(x))
+        return torch.relu(self.linear(x))
 
     def train(
         self,
@@ -169,14 +166,10 @@ class SimpleMLP(NNBaseModel):
         super(SimpleMLP, self).__init__()
         self.fc1 = torch.nn.Linear(input_dim, 128)
         self.fc2 = torch.nn.Linear(128, output_dim)
-        if output_dim == 2:
-            self.last_activation = torch.sigmoid
-        else:
-            self.last_activation = torch.softmax
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
-        x = self.last_activation(self.fc2(x))
+        x = torch.softmax(self.fc2(x), dim=1)
         return x
 
     def train(
@@ -230,16 +223,12 @@ class CNN2D(NNBaseModel):
         self.fc1 = torch.nn.Linear(
             out_channels * (image_height - kernel_size + 1) * (image_width - kernel_size + 1) // 4, 32)
         self.fc2 = torch.nn.Linear(32, n_classes)
-        if n_classes == 2:
-            self.last_activation = torch.sigmoid
-        else:
-            self.last_activation = torch.softmax
 
     def forward(self, x):
         x = self.pool_1(torch.relu(self.conv1(x)))
         x = torch.flatten(x, 1)
         x = torch.relu(self.fc1(x))
-        x = self.last_activation(self.fc2(x))
+        x = torch.softmax(self.fc2(x), dim=1)
         return x
 
     def train(
@@ -308,7 +297,7 @@ class CNNLstm(NNBaseModel):
         x = x.view(x.size(0), -1)
         x = x.unsqueeze(1)
         x, _ = self.lstm(x)
-        x = self.fc(x[:, -1, :])
+        x = torch.softmax(self.fc(x[:, -1, :]),  dim=1)
         return x
 
     def train(
