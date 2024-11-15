@@ -8,6 +8,7 @@ to define article embeddings that we can use to train our models.
 
 This module contains all classes and functions related to article embeddings.
 """
+import urllib.request
 from abc import ABC, abstractmethod
 import torch
 from gensim.models import Word2Vec
@@ -20,7 +21,7 @@ import pickle
 import tensorflow_hub as hub
 from sentence_transformers import SentenceTransformer
 from InferSent.models import InferSent
-
+import ssl
 
 class ArticleEmbedder(ABC):
     """
@@ -69,7 +70,6 @@ class ArticleEmbedder(ABC):
         pass
 
     @classmethod
-    @abstractmethod
     def return_pretrained(
             cls,
             training_data: None,
@@ -231,14 +231,14 @@ class InferSentEmbedder(ArticleEmbedder):
     def by_training_on_raw_data(
             cls,
             training_data: "RawHumanChatBotData",
-            vector_size: int = 4096,  # Default vector size for Infersent,
+            vector_size: int = 512,  # Default vector size is 4096 for Infersent
             model_path: str = "path/to/infersent.pkl",
             w2v_path: str = "path/to/word_vectors.txt"
     ) -> "InferSentEmbedder":
 
         params_model = {
-            'bsize': 64, 'word_emb_dim': 300,
-            'enc_lstm_dim': 2048, 'pool_type': 'max',
+            'bsize': 64, 'word_emb_dim': 200,
+            'enc_lstm_dim': 256, 'pool_type': 'mean', #switched to 'mean' from 'max
             'dpout_model': 0.0, 'version': 2
         }
         infersent = InferSent(params_model)
@@ -266,9 +266,32 @@ class USEEmbedder(ArticleEmbedder):
         # Load the USE model from TensorFlow Hub
         if self.model is None:
             print("Loading Universal Sentence Encoder...")
-            self.model = hub.load(
-                "https://tfhub.dev/google/universal-sentence-encoder/4")
+            # Create an unverified SSL context
+            self.model = hub.load("https://tfhub.dev/google/universal-sentence-encoder/4")
+
             print("USE model loaded.")
+
+
+
+    def embed(self, article: str) -> torch.Tensor:
+        """
+        Embed the article using the pre-trained USE model.
+
+        Args:
+            article (str): The article text.
+
+        Returns:
+            torch.Tensor: A numerical representation of the article.
+        """
+        # Use TensorFlow to generate embeddings
+        if not hasattr(self, 'model') or self.model is None:
+            self.__post_init__()
+
+        # Generate embeddings for the entire article as a single text input
+        embeddings = self.model([article])
+        embedding_vector = embeddings.numpy().flatten()
+
+        return torch.from_numpy(embedding_vector)
 
     @classmethod
     def embed_articles(cls, article: str) -> torch.Tensor:
@@ -308,8 +331,8 @@ class USEEmbedder(ArticleEmbedder):
     ) -> "USEEmbedder":
         # Initialize the USEEmbedder without any training (pre-trained model)
         print("Loading Universal Sentence Encoder...")
-        model = hub.load(
-            "https://tfhub.dev/google/universal-sentence-encoder/4")
+        model = hub.load("https://tfhub.dev/google/universal-sentence-encoder/4")
+
         return cls(model=model, vector_size=vector_size)
 
 
@@ -323,7 +346,33 @@ class SBERTEmbedder(ArticleEmbedder):
 
     def __post_init__(self):
         # Load the SBERT model if not already loaded
+        print("Loading SBERT model...")
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        print("SBERT model loaded.")
+
+    def embed(self, article: str) -> torch.Tensor:
+        """
+        Embed the article into a single fixed-length vector
+        by calculating the average of the SBERT embeddings for all sentences.
+
+        Args:
+            article (str): The article text.
+
+        Returns:
+            torch.Tensor: A numerical representation of the article.
+        """
+        print("embedding article")
+        # Tokenize the article into sentences and flatten to a list of strings
+        sentences = [sentence for sentence_list in sentence_word_tokenizer(article) for sentence in sentence_list if
+                     sentence.strip()]
+
+        # Generate SBERT embeddings for each sentence
+        sentence_embeddings = self.model.encode(sentences, convert_to_numpy=True)
+
+        # Calculate the average embedding across all sentence embeddings
+        average_embedding = np.mean(sentence_embeddings, axis=0)
+
+        return torch.from_numpy(average_embedding)
 
     @classmethod
     def embed_articles(cls, article: str) -> torch.Tensor:
