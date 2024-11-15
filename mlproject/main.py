@@ -2,13 +2,13 @@ import click
 import os
 from collections import defaultdict
 from functools import wraps
-<<<<<<< Updated upstream
+
 from typing import Optional, Tuple
 from mlproject.data_processing import RawHumanChatBotData, WikihowSubset, RunResult, AdaboostResult
 from mlproject.datasets import HumanChatBotDataset, ImageByCrossMultiplicationDataset, ImageFolderDataset
 from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder
 from mlproject.models import NNBaseModel, CNN2D
-=======
+
 from typing import Optional
 
 from torch.optim.optimizer import required
@@ -17,7 +17,6 @@ from mlproject.data_processing import RawHumanChatBotData, WikihowSubset
 from mlproject.datasets import HumanChatBotDataset
 from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder,USEEmbedder, SBERTEmbedder
 from mlproject.models import NNBaseModel
->>>>>>> Stashed changes
 from pathlib import Path
 from mlproject import constants as pc
 import polars as pl
@@ -262,14 +261,10 @@ def embed_data_with_infersent(
         # Create the dataset object
         dataset = RawHumanChatBotData(data=df)
 
-<<<<<<< Updated upstream
-    embeddings = HumanChatBotDataset.from_raw_data(
-        dataset, embedder)  # embedder.embed_articles(dataset)
-=======
+        embeddings = HumanChatBotDataset.from_raw_data(dataset, embedder)  # embedder.embed_articles(dataset)
         # Embed the data
         print("Starting to embed data...")
         embeddings = HumanChatBotDataset.from_raw_data(dataset, embedder)
->>>>>>> Stashed changes
 
         # Create a DataFrame with embeddings and indices
         embeddings_df = embeddings.data
