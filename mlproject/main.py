@@ -4,7 +4,7 @@ from collections import defaultdict
 from functools import wraps
 from typing import Optional, Tuple
 from mlproject.data_processing import RawHumanChatBotData, WikihowSubset, RunResult, AdaboostResult
-from mlproject.datasets import HumanChatBotDataset, ImageByCrossMultiplicationDataset
+from mlproject.datasets import HumanChatBotDataset, ImageByCrossMultiplicationDataset, ImageFolderDataset
 from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder
 from mlproject.models import NNBaseModel, CNN2D
 from pathlib import Path
@@ -436,13 +436,13 @@ def get_training_and_testing_datasets(ds: str, test_ds: Optional[str], seed: Opt
 @cli.command()
 @click.option(
     "--ds",
-    type=click.Path(exists=True, dir_okay=False),
+    type=click.Path(exists=True),
     help="The path to the dataset to use for training.",
     required=True
 )
 @click.option(
     "--test-ds",
-    type=click.Path(exists=True, dir_okay=False),
+    type=click.Path(exists=True),
     default=None,
     help="The path to the test dataset. If used, it will be assumed that --ds is the training dataset."
 )
@@ -501,6 +501,7 @@ def train_nn_model(
     model_klass = NNBaseModel.registry[model_name]
     model: NNBaseModel = None
     if model_name in ("CNN2D", "CNNLstm"):
+        
         train_dataset = ImageByCrossMultiplicationDataset.from_human_chatbot_ds(
             train_dataset)
         test_dataset = ImageByCrossMultiplicationDataset.from_human_chatbot_ds(
@@ -522,8 +523,7 @@ def train_nn_model(
     result = model.run_training(
         train_dataset=train_dataset,
         test_dataset=test_dataset,
-        epochs=epochs,
-        learning_rate=learning_rate
+        epochs=epochs
     )
     run_result = RunResult(
         original_dataset_name=ds_name,

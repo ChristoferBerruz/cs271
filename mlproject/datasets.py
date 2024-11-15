@@ -253,7 +253,10 @@ class ImageByCrossMultiplicationDataset(Dataset):
 class ImageFolderDataset(ImageFolder):
 
     def __init__(self, root: str):
-        transform = ImageByCrossMultiplicationDataset.get_default_transform()
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            normalization_transform
+        ])
         super().__init__(root, transform=transform)
 
     def __post_init__(self):
