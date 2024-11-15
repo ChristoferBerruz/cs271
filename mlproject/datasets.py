@@ -63,10 +63,11 @@ class HumanChatBotDataset(Dataset):
         all_tensors = []
         all_labels = []
         all_types = []
-        for row in raw_data.data.iter_rows(named=True):
+        for index,row in enumerate(raw_data.data.iter_rows(named=True)):
             text = row["text"]
             article_type = row["type"]
             label = article_type_to_classnum[article_type]
+            print(f"embedded row {index}")
             all_tensors.append(embedder.embed(text))
             all_labels.append(label)
             all_types.append(article_type)
