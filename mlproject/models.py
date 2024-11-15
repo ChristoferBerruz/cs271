@@ -71,7 +71,12 @@ class NNBaseModel(torch.nn.Module, ABC):
                 text_vectors = text_vectors.to(self.device)
                 text_labels = text_labels.to(self.device)
                 outputs = self(text_vectors)
+                # CrossEntropyLoss gives you the mean loss
+                # of the batch already, so the only thing we have
+                # to do is divide by the number of batches
+                # later.
                 loss += criterion(outputs, text_labels).item()
+        loss /= len(data_loader)
         return loss
 
     def to(self, device: str):
