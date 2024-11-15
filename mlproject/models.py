@@ -40,7 +40,7 @@ class NNBaseModel(torch.nn.Module, ABC):
         correct = 0
         make_up = defaultdict(lambda: defaultdict(int))
         with torch.no_grad():
-            for text_vectors, text_labels in tqdm(data_loader):
+            for text_vectors, text_labels in data_loader:
                 text_vectors = text_vectors.to(self.device)
                 text_labels = text_labels.to(self.device)
                 outputs = self(text_vectors)
@@ -67,7 +67,7 @@ class NNBaseModel(torch.nn.Module, ABC):
     def compute_loss(self, data_loader: DataLoader, criterion: torch.nn.Module) -> float:
         loss = 0.0
         with torch.no_grad():
-            for text_vectors, text_labels in tqdm(data_loader):
+            for text_vectors, text_labels in data_loader:
                 text_vectors = text_vectors.to(self.device)
                 text_labels = text_labels.to(self.device)
                 outputs = self(text_vectors)
@@ -147,8 +147,8 @@ class LogisticRegression(NNBaseModel):
         )
         optimizer = self.optimizer
         criterion = self.criterion
-        for epoch in range(epochs):
-            for _, (text_vectors, text_labels) in tqdm(enumerate(train_loader)):
+        for epoch in tqdm(range(epochs)):
+            for _, (text_vectors, text_labels) in enumerate(train_loader):
                 text_vectors = text_vectors.to(self.device)
                 text_labels = text_labels.to(self.device)
                 optimizer.zero_grad()
@@ -204,8 +204,8 @@ class SimpleMLP(NNBaseModel):
             epochs=epochs,
             training_batch_size=32
         )
-        for epoch in range(epochs):
-            for _, (text_vectors, text_labels) in tqdm(enumerate(train_loader)):
+        for epoch in tqdm(range(epochs)):
+            for _, (text_vectors, text_labels) in enumerate(train_loader):
                 text_vectors = text_vectors.to(self.device)
                 text_labels = text_labels.to(self.device)
                 optimizer.zero_grad()
@@ -269,8 +269,8 @@ class CNN2D(NNBaseModel):
         )
         optimizer = self.optimizer
         criterion = self.criterion
-        for epoch in range(epochs):
-            for text_vectors, text_labels in tqdm(train_loader):
+        for epoch in tqdm(range(epochs)):
+            for text_vectors, text_labels in train_loader:
                 text_vectors = text_vectors.to(self.device)
                 text_labels = text_labels.to(self.device)
                 optimizer.zero_grad()
@@ -350,8 +350,8 @@ class CNNLstm(NNBaseModel):
             optimizer_name=self.optimizer_name,
             epochs=epochs
         )
-        for epoch in range(epochs):
-            for text_vectors, text_labels in tqdm(train_loader):
+        for epoch in tqdm(range(epochs)):
+            for text_vectors, text_labels in train_loader:
                 text_vectors = text_vectors.to(self.device)
                 text_labels = text_labels.to(self.device)
                 optimizer.zero_grad()
