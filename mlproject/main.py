@@ -2,14 +2,28 @@ import click
 import os
 from collections import defaultdict
 from functools import wraps
+<<<<<<< Updated upstream
 from typing import Optional, Tuple
 from mlproject.data_processing import RawHumanChatBotData, WikihowSubset, RunResult, AdaboostResult
 from mlproject.datasets import HumanChatBotDataset, ImageByCrossMultiplicationDataset
 from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder
 from mlproject.models import NNBaseModel, CNN2D
+=======
+from typing import Optional
+
+from torch.optim.optimizer import required
+
+from mlproject.data_processing import RawHumanChatBotData, WikihowSubset
+from mlproject.datasets import HumanChatBotDataset
+from mlproject.embeddings import ArticleEmbedder, InferSentEmbedder,USEEmbedder, SBERTEmbedder
+from mlproject.models import NNBaseModel
+>>>>>>> Stashed changes
 from pathlib import Path
 from mlproject import constants as pc
 import polars as pl
+import ssl
+
+ssl._create_default_https_context = ssl._create_stdlib_context
 
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.preprocessing import LabelEncoder
@@ -174,10 +188,10 @@ def load_pretrained(
     help="The path to the raw data CSV file."
 )
 @click.option(
-    "--embedded-path",
-    type=click.Path(resolve_path=True),
+    "--embedded-base-path",
+    type=str,
     required=True,
-    help="The path to save the embedded text."
+    help="The base path to save the embedded text."
 )
 @click.option(
     "--n-rows",
@@ -206,7 +220,7 @@ def load_pretrained(
 def embed_data_with_infersent(
         name: str,
         csv_path: str,
-        embedded_path: str,
+        embedded_base_path: str,
         n_rows: int,
         model_path: str,
         w2v_path: str,
@@ -223,28 +237,202 @@ def embed_data_with_infersent(
     embedder.load_model()
 
     # Load the dataset
-    print("Loading dataset...")
-    if n_rows is not None:
-        df = pl.read_csv(csv_path, n_rows=n_rows)
-    else:
-        df = pl.read_csv(csv_path)
+    batch_size = 5000
+    # Determine the total number of rows
+    print("Calculating total rows in dataset...")
+    total_df = pl.read_csv(csv_path, truncate_ragged_lines=True)
+    total_rows = total_df.shape[0]
+    num_batches = (total_rows // batch_size) + (1 if total_rows % batch_size != 0 else 0)
+    for batch_num in range(6, num_batches):
+        start_row = batch_num * batch_size
+        end_row = min(start_row + batch_size, total_rows)
 
-    # Create the dataset object
-    dataset = RawHumanChatBotData(data=df)
+        print(f"Processing batch {batch_num + 1}/{num_batches} (rows {start_row} to {end_row - 1})...")
 
-    # Embed the data
-    print("Starting to embed data...")
+        # Load the batch
+        df = pl.read_csv(csv_path,
+                         skip_rows=start_row,
+                         n_rows=(end_row - start_row),
+                         truncate_ragged_lines=True,
+                         schema_overrides={"type": pl.Utf8, "text": pl.Utf8},
+                         infer_schema_length=10000,
+                         ignore_errors=True,
+                         null_values=["Grow Plants from Seeds"])
+        df.columns = ["type", "text"]
+        # Create the dataset object
+        dataset = RawHumanChatBotData(data=df)
 
+<<<<<<< Updated upstream
     embeddings = HumanChatBotDataset.from_raw_data(
         dataset, embedder)  # embedder.embed_articles(dataset)
+=======
+        # Embed the data
+        print("Starting to embed data...")
+        embeddings = HumanChatBotDataset.from_raw_data(dataset, embedder)
+>>>>>>> Stashed changes
 
-    # Create a DataFrame with embeddings and indices
-    embeddings_df = embeddings.data
+        # Create a DataFrame with embeddings and indices
+        embeddings_df = embeddings.data
 
-    # Save the DataFrame to a file
-    print(f"Saving embeddings to {embedded_path}...")
-    embeddings_df.write_csv(embedded_path)
-    print("Embeddings saved successfully.")
+        # Save the batch embeddings to a file
+        batch_embedded_path = f"{embedded_base_path}_batch_{batch_num + 1}.csv"
+        print(f"Saving embeddings to {batch_embedded_path}...")
+        embeddings_df.write_csv(batch_embedded_path)
+
+    print("All batches processed and saved successfully.")
+
+@cli.command()
+@click.option("--name", required=False,default="USEEmbedder", help="Name of the embedder.")
+@click.option(
+    "--csv-path",
+    type=click.Path(exists=True),
+    required=True,
+    help="The path to the raw data CSV file."
+)
+@click.option(
+    "--embedded-base-path",
+    type=str,
+    required=True,
+    help="The base path to save the embedded text."
+)
+@click.option(
+    "--vector-size",
+    type=int,
+    default=512,
+    help="The size of the embedding vectors."
+)
+@click.option(
+    "--start-batch",
+    required = False,
+    type=int,
+    default=1
+)
+def embed_data_with_use(name, csv_path, embedded_base_path, vector_size, start_batch):
+    # Load the USE embedder
+    print("Loading the USE embedder...")
+    embedder = USEEmbedder(model=None, vector_size=vector_size)
+
+    # Define batch size
+    batch_size = 5000
+
+    # Calculate total rows in dataset
+    print("Calculating total rows in dataset...")
+    total_df = pl.read_csv(csv_path, truncate_ragged_lines=True, ignore_errors=True)
+    total_rows = total_df.shape[0]
+    num_batches = (total_rows // batch_size) + (1 if total_rows % batch_size != 0 else 0)
+
+    for batch_num in range(start_batch - 1, num_batches):
+        start_row = batch_num * batch_size
+        end_row = min(start_row + batch_size, total_rows)
+
+        print(f"Processing batch {batch_num + 1}/{num_batches} (rows {start_row} to {end_row - 1})...")
+
+        # Load the batch
+        df = pl.read_csv(
+            csv_path,
+        skip_rows=start_row,
+        n_rows=(end_row - start_row),
+        has_header=False,  # Treats all rows as data, not header
+        truncate_ragged_lines=True,
+        ignore_errors=True,
+        null_values=["Grow Plants from Seeds"])
+
+        df.columns = ["type", "text"]
+        df = df.with_columns(
+            pl.lit("llama").alias("type")  # Assigns "llama" to all rows in the "type" column
+        )
+        df = df.with_columns([
+            pl.col("type").cast(pl.Utf8),
+            pl.col("text").cast(pl.Utf8)
+        ])
+        df = df.drop_nulls(subset=["text"])
+        df = df.filter(pl.col("text").str.strip_chars() != "")
+
+        # Create the dataset object
+        dataset = RawHumanChatBotData(data=df)
+
+        # Embed the data
+        print("Starting to embed data...")
+        embeddings = HumanChatBotDataset.from_raw_data(dataset, embedder)
+
+        # Save the batch embeddings to a file
+        batch_embedded_path = f"{embedded_base_path}_batch_{batch_num + 1}.csv"
+        print(f"Saving embeddings to {batch_embedded_path}...")
+        embeddings.data.write_csv(batch_embedded_path)
+
+    print("All batches processed and saved successfully.")
+
+@cli.command()
+@click.option("--name", required=False,default="SBERTEmbedder", help="Name of the embedder.")
+@click.option(
+    "--csv-path",
+    type=click.Path(exists=True),
+    required=True,
+    help="The path to the raw data CSV file."
+)
+@click.option(
+    "--embedded-base-path",
+    type=str,
+    required=True,
+    help="The base path to save the embedded text."
+)
+@click.option(
+    "--vector-size",
+    type=int,
+    default=384,
+    help="The size of the embedding vectors."
+)
+@click.option(
+    "--start-batch",
+    required = False,
+    type=int,
+    default=1
+)
+def embed_data_with_sbert(name, csv_path, embedded_base_path, vector_size, start_batch):
+    # Load the InferSent embedder
+    print("Loading the SBERT embedder...")
+    embedder = SBERTEmbedder(model=None, vector_size=vector_size)
+    embedder.__post_init__()
+
+    # Load the dataset
+    batch_size = 5000
+    # Determine the total number of rows
+    print("Calculating total rows in dataset...")
+    total_df = pl.read_csv(csv_path, truncate_ragged_lines=True)
+    total_rows = total_df.shape[0]
+    num_batches = (total_rows // batch_size) + (1 if total_rows % batch_size != 0 else 0)
+    for batch_num in range(start_batch-1, num_batches):
+        start_row = batch_num * batch_size
+        end_row = min(start_row + batch_size, total_rows)
+
+        print(f"Processing batch {batch_num + 1}/{num_batches} (rows {start_row} to {end_row - 1})...")
+
+        # Load the batch
+        df = pl.read_csv(csv_path,
+                         skip_rows=start_row,
+                         n_rows=(end_row - start_row),
+                         truncate_ragged_lines=True,
+                         schema_overrides={"type": pl.Utf8, "text": pl.Utf8},
+                         infer_schema_length=10000,
+                         ignore_errors=True,
+                         null_values=["\"Grow Plants from Seeds\n"])
+        df.columns = ["type", "text"]
+        # Create the dataset object
+        dataset = RawHumanChatBotData(data=df)
+
+        # Embed the data
+        print("Starting to embed data...")
+        embeddings = HumanChatBotDataset.from_raw_data(dataset, embedder)
+
+        # Create a DataFrame with embeddings and indices
+        embeddings_df = embeddings.data
+
+        # Save the batch embeddings to a file
+        batch_embedded_path = f"{embedded_base_path}_batch_{batch_num + 1}.csv"
+        print(f"Saving embeddings to {batch_embedded_path}...")
+        embeddings_df.write_csv(batch_embedded_path)
+
+    print("All batches processed and saved successfully.")
 
 
 @cli.command()
@@ -342,6 +530,33 @@ def train_embedder(
     print(f"Saving model: {name!r} to location: {embedder_file}")
     embedder.save(embedder_file)
 
+@cli.command()
+@click.option(
+    "--csv-path",
+    type=click.Path(exists=True),
+    required=True,
+    help="The path to the raw data CSV file."
+)
+@click.option(
+    "--subset-path",
+    type=click.Path(resolve_path=True),
+    required=True,
+    help="Where to save the subset"
+)
+def get_and_store_subset(csv_path, subset_path):
+    print("loading raw data")
+    df = pl.read_csv(csv_path)
+    print("getting human subset")
+    human_df = df.filter(pl.col("type") == "human").sample(n=50000)
+    print("getting gpt subset")
+    gpt_df = df.filter(pl.col("type") == "gpt").sample(n=50000)
+    print("combining subsets")
+    sampled_df = pl.concat([human_df, gpt_df])
+    print("dropping all columns besides type and text ")
+    result_df = sampled_df.select(["type", "text"])
+    print("saving to subset_path")
+    result_df.write_csv(subset_path)
+    print("saved")
 
 @cli.command()
 @read_raw_data_common_options
