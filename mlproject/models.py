@@ -284,7 +284,7 @@ class CNN2D(NNBaseModel):
             )
         return exp_result
 
-
+"""
 class CNNLstm(NNBaseModel):
 
     def __init__(
@@ -342,6 +342,99 @@ class CNNLstm(NNBaseModel):
         )
         exp_result = NeuralNetworkExperimentResult(
             learning_rate=self.learning_rate,
+            training_batch_size=training_batch_size,
+            criterion_name=self.criterion_name,
+            optimizer_name=self.optimizer_name,
+            epochs=epochs
+        )
+        for epoch in range(epochs):
+            for text_vectors, text_labels in train_loader:
+                text_vectors = text_vectors.to(self.device)
+                text_labels = text_labels.to(self.device)
+                optimizer.zero_grad()
+                outputs = self(text_vectors)
+                loss = criterion(outputs, text_labels)
+                loss.backward()
+                optimizer.step()
+            self.validate_after_epoch(
+                epoch,
+                train_loader,
+                test_loader,
+                criterion,
+                exp_result
+            )
+        return exp_result
+"""
+class CNNLstm(NNBaseModel):
+
+    def __init__(
+        self,
+        image_height: int,
+        image_width: int,
+        n_classes: int,
+        kernel_size: int = 3,
+        out_channels: int = 16,
+        learning_rate: float = 0.001,
+    ):
+        super(CNNLstm, self).__init__()
+        self.cnn = torch.nn.Sequential(
+            torch.nn.Conv2d(1, out_channels, kernel_size=kernel_size),
+            torch.nn.ReLU(),
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+            torch.nn.Dropout(0.3)  # Dropout to prevent overfitting
+        )
+        cnn_output_dim = (
+            (image_height - kernel_size + 1) // 2,
+            (image_width - kernel_size + 1) // 2,
+        )
+        self.cnn_flatten_dim = out_channels * cnn_output_dim[0] * cnn_output_dim[1]
+        self.lstm_hidden_size = 128
+        self.lstm = torch.nn.LSTM(
+            input_size=self.cnn_flatten_dim,
+            hidden_size=self.lstm_hidden_size,
+            num_layers=2,  # Increased depth for better representation
+            batch_first=True,
+            dropout=0.3  # Dropout for LSTM layers
+        )
+        self.fc = torch.nn.Sequential(
+            torch.nn.Linear(self.lstm_hidden_size, 64),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(0.3),
+            torch.nn.Linear(64, n_classes)
+        )
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+        self.criterion = torch.nn.CrossEntropyLoss()
+        self.learning_rate = learning_rate
+        self.criterion_name = f"{self.criterion.__class__.__name__}"
+        self.optimizer_name = f"{self.optimizer.__class__.__name__}"
+
+    def forward(self, x):
+        x = self.cnn(x)
+        x = x.view(x.size(0), -1)  # Flatten CNN output
+        x = x.unsqueeze(1)  # Add sequence dimension for LSTM
+        x, _ = self.lstm(x)  # LSTM output
+        x = self.fc(x[:, -1, :])  # Use the last LSTM output
+        x = torch.softmax(x, dim=1)
+        return x
+
+    def run_training(
+            self,
+            train_dataset: HumanChatBotDataset,
+            test_dataset: HumanChatBotDataset,
+            epochs: int = 100,
+            learning_rate: float = 0.001  # Added this parameter
+    ):
+        optimizer = self.optimizer
+        criterion = self.criterion
+        training_batch_size = 32
+        train_loader = DataLoader(
+            train_dataset, batch_size=training_batch_size, shuffle=True
+        )
+        test_loader = DataLoader(
+            test_dataset, batch_size=32, shuffle=False
+        )
+        exp_result = NeuralNetworkExperimentResult(
+            learning_rate=self.learning_rate,  # Use self.learning_rate or the passed argument
             training_batch_size=training_batch_size,
             criterion_name=self.criterion_name,
             optimizer_name=self.optimizer_name,
