@@ -249,19 +249,20 @@ class ImageByCrossMultiplicationDataset(Dataset):
         return self.images[idx], self.labels[idx]
 
 
-@dataclass
 class ImageFolderDataset(ImageFolder):
 
     def __init__(self, root: str):
         transform = transforms.Compose([
             transforms.ToTensor(),
+            transforms.Grayscale(),
             normalization_transform
         ])
         super().__init__(root, transform=transform)
-
-    def __post_init__(self):
-        self.number_of_classes = [int(cls) for cls in self.classes]
-        self.image_height, self.image_width = self[0][0].shape[1:]
+        self.number_of_classes = len(self.classes)
+        some_image = self[0][0]
+        _, h, w = some_image.shape
+        print(f"Loaded ImageFolder dataset {root!r} with {len(self)} samples. Image dimensions: {h}x{w}")
+        self.image_height, self.image_width = h, w
 
 
 @dataclass

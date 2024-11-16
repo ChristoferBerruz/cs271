@@ -412,7 +412,7 @@ def get_information_from_embedded_path(some_path: str) -> Tuple[str, str]:
     return orig_ds_name, embedder_name
 
 
-def get_training_and_testing_datasets(ds: str, test_ds: Optional[str], seed: Optional[int] = None) -> Tuple[HumanChatBotDataset, HumanChatBotDataset]:
+def get_embedded_training_and_testing_ds(ds: str, test_ds: Optional[str], seed: Optional[int] = None) -> Tuple[HumanChatBotDataset, HumanChatBotDataset]:
     if ds and test_ds:
         print(
             f"Both ds and test_ds provided. Assuming {ds!r} is the training dataset and returning both datasets.")
@@ -431,6 +431,24 @@ def get_training_and_testing_datasets(ds: str, test_ds: Optional[str], seed: Opt
         train_dataset = HumanChatBotDataset(train_data)
         test_dataset = HumanChatBotDataset(test_data)
     return train_dataset, test_dataset
+
+def get_image_training_and_testing_ds(
+    ds: str,
+    test_ds: Optional[str]
+) -> Tuple[ImageFolderDataset, ImageFolderDataset]:
+    if ds and test_ds:
+        return ImageFolderDataset(ds), ImageFolderDataset(test_ds)
+    else:
+        # get the one level down subfolders
+        subfolders = [x for x in os.listdir(ds) if os.path.isdir(os.path.join(ds, x))]
+        train_dirs = [folder for folder in subfolders if "train" in folder]
+        test_dirs = [folder for folder in subfolders if "test" in folder]
+        if not train_dirs or not test_dirs:
+            raise ValueError(
+                f"Could not find train and test subfolders in {ds!r}")
+        full_train_path = os.path.join(ds, train_dirs[0])
+        full_test_path = os.path.join(ds, test_dirs[0])
+        return ImageFolderDataset(full_train_path), ImageFolderDataset(full_test_path)
 
 
 @cli.command()
@@ -494,26 +512,24 @@ def train_nn_model(
     identifier = f"{ds_name}_{embedder_name}_{model_name}"
     run_f_name = f"{identifier}.json".lower()
     full_run_path = Path(save_dir).joinpath(run_f_name)
-    train_dataset, test_dataset = get_training_and_testing_datasets(
-        ds=ds, test_ds=test_ds, seed=seed)
-    embedding_size = train_dataset.embedding_size
-    n_classes = train_dataset.number_of_classes
     model_klass = NNBaseModel.registry[model_name]
     model: NNBaseModel = None
     if model_name in ("CNN2D", "CNNLstm"):
-        
-        train_dataset = ImageByCrossMultiplicationDataset.from_human_chatbot_ds(
-            train_dataset)
-        test_dataset = ImageByCrossMultiplicationDataset.from_human_chatbot_ds(
-            test_dataset)
+        train_dataset, test_dataset = get_image_training_and_testing_ds(
+            ds, test_ds)
         image_height = train_dataset.image_height
         image_width = train_dataset.image_width
+        n_classes = train_dataset.number_of_classes
         model = model_klass(image_height=image_height,
                             image_width=image_width,
                             n_classes=n_classes,
                             learning_rate=learning_rate
                             )
     else:
+        train_dataset, test_dataset = get_embedded_training_and_testing_ds(
+            ds=ds, test_ds=test_ds, seed=seed)
+        embedding_size = train_dataset.embedding_size
+        n_classes = train_dataset.number_of_classes
         model = model_klass(input_dim=embedding_size,
                             output_dim=n_classes, learning_rate=learning_rate)
 
@@ -578,7 +594,7 @@ def convert_into_image_dataset(
     save_dir: str
 ):
     ds_name, embedder_name = get_information_from_embedded_path(ds)
-    train_dataset, test_dataset = get_training_and_testing_datasets(
+    train_dataset, test_dataset = get_embedded_training_and_testing_ds(
         ds=ds, test_ds=test_ds, seed=seed)
 
     subfolder = os.path.join(save_dir, f"{embedder_name}_{ds_name}")
@@ -624,7 +640,7 @@ def convert_into_image_dataset(
 )
 def adaboost(ds: str, test_ds: str, seed: int, save_dir: str):
     print("Loading datasets...")
-    train_dataset, test_dataset = get_training_and_testing_datasets(
+    train_dataset, test_dataset = get_embedded_training_and_testing_ds(
         ds, test_ds, seed)
     ds_name, embedder_name = get_information_from_embedded_path(ds)
 
