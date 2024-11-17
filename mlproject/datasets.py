@@ -12,6 +12,8 @@ from mlproject.embeddings import ArticleEmbedder
 import os
 from tqdm import tqdm
 
+from abc import abstractmethod, ABC
+
 
 @dataclass
 class HumanChatBotDataset(Dataset):
@@ -162,54 +164,61 @@ def get_embedding_as_image_tensor(embedding: torch.Tensor) -> torch.Tensor:
 
 normalization_transform = transforms.Normalize((0.5,), (0.5,))
 tensor_to_pil = transforms.ToPILImage()
+DEFAULT_IMAGE_SHAPE = (100, 100)
+resize_transform = transforms.Resize(DEFAULT_IMAGE_SHAPE)
+
 
 def generate_and_save(embedding, save_path):
     cross_mult = get_embedding_as_image_tensor(embedding)
     image = tensor_to_pil(cross_mult)
     image.save(save_path)
 
+@dataclass
+class ImageDataset(ABC, Dataset):
+
+    @property
+    @abstractmethod
+    def image_height(self) -> int:
+        pass
+
+    @property
+    @abstractmethod
+    def image_width(self) -> int:
+        pass
+
+    @property
+    @abstractmethod
+    def number_of_classes(self) -> int:
+        pass
+
 
 @dataclass
-class ImageByCrossMultiplicationDataset(Dataset):
+class ImageByCrossMultiplicationDataset(ImageDataset):
     """This dataset contains embeddings expressed as the
     element wise multiplication of the same embedding.
     """
-    images: torch.Tensor
-    labels: torch.Tensor
+    human_chatbot_ds: HumanChatBotDataset
+    resize: bool = True
+    precompute: bool = False
+    cache: Dict[int, torch.Tensor] = field(default_factory=dict, init=False)
 
-    @classmethod
-    def from_human_chatbot_ds(cls, ds: HumanChatBotDataset, apply_transforms: bool = True) -> "ImageByCrossMultiplicationDataset":
-        """Create a dataset of images by calculating the cross multiplication. For each embedding
-        of size vector_size, the cross multiplication is defined as the matrix multiplication
-        of (vector_size, 1) @(1, vector_size) which results in a (vector_size, vector_size) matrix.
+    def __post_init__(self):
+        if self.resize:
+            self._image_height, self._image_width = DEFAULT_IMAGE_SHAPE
+        else:
+            self._image_height = self.human_chatbot_ds.embedding_size
+            self._image_width = self.human_chatbot_ds.embedding_size
 
-        Args:
-            ds (HumanChatBotDataset): the human chatbot dataset
-            apply_transforms (bool, optional): Whether to apply image transforms, such as normalization. Defaults to True.
+        if self.precompute:
+            print("Precomputing images")
+            for i in tqdm(range(len(self.human_chatbot_ds))):
+                embedding, label = self.human_chatbot_ds[i]
+                image = get_embedding_as_image_tensor(embedding)
+                if self.resize:
+                    image = resize_transform(image)
+                self.cache[i] = image
+            print("Precomputation completed")
 
-        Returns:
-            ImageByCrossMultiplicationDataset: An image dataset.
-        """
-        n_samples = len(ds)
-        labels = []
-        images = []
-        normalized_transform = normalization_transform
-
-        # By definition, images are (C, H, W) tensors
-        print(
-            f"Generating image dataset from {n_samples} embedding samples")
-        for i in tqdm(range(n_samples)):
-            embedding, label = ds[i]
-            cross_mult = get_embedding_as_image_tensor(embedding)
-            if apply_transforms:
-                cross_mult = normalized_transform(cross_mult)
-
-            images.append(cross_mult)
-            labels.append(label)
-
-        embeddings = torch.stack(images)
-        labels = torch.tensor(labels, dtype=torch.long)
-        return cls(embeddings, labels)
 
     @classmethod
     def convert_and_save(cls, ds: HumanChatBotDataset, root_save_path: str):
@@ -233,21 +242,29 @@ class ImageByCrossMultiplicationDataset(Dataset):
             generate_and_save(embedding, save_path)
         print("Image generation tasks completed")
 
-        
-
     def __len__(self) -> int:
-        return len(self.images)
-
+        return len(self.human_chatbot_ds)
+    
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+        embedding, label = self.human_chatbot_ds[idx]
+        if self.cache:
+            return self.cache[idx], label
+        image = get_embedding_as_image_tensor(embedding)
+        if self.resize:
+            image = resize_transform(image)
+        return image, label
+    
     @property
     def image_height(self) -> int:
-        return self.images.shape[2]
-
+        return self._image_height
+    
     @property
     def image_width(self) -> int:
-        return self.images.shape[3]
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        return self.images[idx], self.labels[idx]
+        return self._image_width
+    
+    @property
+    def number_of_classes(self) -> int:
+        return self.human_chatbot_ds.number_of_classes
 
 
 class ImageFolderDataset(ImageFolder):

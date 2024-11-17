@@ -664,13 +664,13 @@ def get_image_training_and_testing_ds(
 @cli.command()
 @click.option(
     "--ds",
-    type=click.Path(exists=True),
+    type=click.Path(exists=True, dir_okay=False),
     help="The path to the dataset to use for training.",
     required=True
 )
 @click.option(
     "--test-ds",
-    type=click.Path(exists=True),
+    type=click.Path(exists=True, dir_okay=False),
     default=None,
     help="The path to the test dataset. If used, it will be assumed that --ds is the training dataset."
 )
@@ -704,6 +704,18 @@ def get_image_training_and_testing_ds(
     help="The directory to save the results.",
     default="."
 )
+@click.option(
+    "--resize/--no-resize",
+    default=True,
+    help="Whether to resize the images or not. Only used when dealing with image models.",
+    is_flag=True
+)
+@click.option(
+    "--precompute/--no-precompute",
+    default=False,
+    help="Whether to precompute all images at once. Only used when dealing with image models.",
+    is_flag=True
+)
 def train_nn_model(
     ds: str,
     test_ds: str,
@@ -711,7 +723,9 @@ def train_nn_model(
     model_name: str,
     epochs: int,
     learning_rate: float,
-    save_dir: str
+    save_dir: str,
+    resize: bool,
+    precompute: bool
 ):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     torch.set_default_dtype(torch.float32)
@@ -724,20 +738,21 @@ def train_nn_model(
     full_run_path = Path(save_dir).joinpath(run_f_name)
     model_klass = NNBaseModel.registry[model_name]
     model: NNBaseModel = None
+    train_dataset, test_dataset = get_embedded_training_and_testing_ds(
+        ds=ds, test_ds=test_ds, seed=seed)
     if model_name in ("CNN2D", "CNNLstm"):
-        train_dataset, test_dataset = get_image_training_and_testing_ds(
-            ds, test_ds)
+        train_dataset = ImageByCrossMultiplicationDataset(train_dataset, resize=resize, precompute=precompute)
+        test_dataset = ImageByCrossMultiplicationDataset(test_dataset, resize=resize, precompute=precompute)
         image_height = train_dataset.image_height
         image_width = train_dataset.image_width
         n_classes = train_dataset.number_of_classes
+        print(f"Image dataset info: n_classes={n_classes}, height: {image_height}, width: {image_width}")
         model = model_klass(image_height=image_height,
                             image_width=image_width,
                             n_classes=n_classes,
                             learning_rate=learning_rate
                             )
     else:
-        train_dataset, test_dataset = get_embedded_training_and_testing_ds(
-            ds=ds, test_ds=test_ds, seed=seed)
         embedding_size = train_dataset.embedding_size
         n_classes = train_dataset.number_of_classes
         model = model_klass(input_dim=embedding_size,
