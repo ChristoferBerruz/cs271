@@ -1,10 +1,12 @@
 import torch
 
+from functools import partial
 from typing import Type, List, ClassVar, Dict, Tuple
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from collections import defaultdict
+from contextlib import contextmanager
 
 from abc import ABC, abstractmethod
 
@@ -82,8 +84,34 @@ class NNBaseModel(torch.nn.Module, ABC):
     def to(self, device: str):
         self.device = device
         return super().to(device)
+    
+    @contextmanager
+    def validation_context(self):
+        try:
+            self.eval()
+            yield
+        finally:
+            self.train()
+
 
     def validate_after_epoch(
+        self,
+        epoch: int,
+        train_loader: DataLoader,
+        test_loader: DataLoader,
+        criterion: torch.nn.Module,
+        exp_result: NeuralNetworkExperimentResult
+    ):
+        with self.validation_context():
+            self._validate_after_epoch(
+                epoch,
+                train_loader,
+                test_loader,
+                criterion,
+                exp_result
+            )
+
+    def _validate_after_epoch(
             self,
             epoch: int,
             train_loader: DataLoader,
@@ -229,17 +257,49 @@ class SimpleMLP(NNBaseModel):
         return exp_result
 
 
+def get_cnn_image_dimensions(
+        image_height: int,
+        image_width: int,
+        padding: int,
+        kernel_size: int,
+        stride: int,
+        pool_stride: int = 2
+    ) -> Tuple[int, int]:
+    """Calcule the new height and width of an image after a convolutional layer.
+
+    Args:
+        image_height (int): input image height
+        image_width (int): input image width
+        padding (int): the padding used for the kernels
+        kernel_size (int): the kernel size
+        stride (int): the stride applied at the convolutional step
+        pool_stride (int, optional): the stride used for any pooling layer. Defaults to 2.
+
+    Returns:
+        Tuple[int, int]: new_height, new_width
+    """
+    new_height = ((image_height - kernel_size + 2*padding) // stride) + 1
+    new_width = ((image_width - kernel_size + 2*padding) // stride) + 1
+    return new_height//pool_stride, new_width//pool_stride
+
+
 class CNN2D(NNBaseModel):
 
-    def __init__(self, image_height: int, image_width: int, n_classes: int, kernel_size: int = 3, out_channels: int = 3, learning_rate: float = 0.001):
+    def __init__(self, image_height: int, image_width: int, n_classes: int, kernel_size: int = 3, learning_rate: float = 0.001):
         # TODO: Conside expanding the neural network with batchnorm
         # dropout, and the like.
         super(CNN2D, self).__init__()
-        self.conv1 = torch.nn.Conv2d(1, out_channels, kernel_size=kernel_size)
-        self.pool_1 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
-        self.fc1 = torch.nn.Linear(
-            out_channels * (image_height - kernel_size + 1) * (image_width - kernel_size + 1) // 4, 32)
-        self.fc2 = torch.nn.Linear(32, n_classes)
+        # define two convolutional blocks, followed by a fully connected
+        # neural network. First block, 3 channels, 3x3 kernel, stride 1
+        # second block, 6 channels, 5x5 kernel, stride 1
+        self.conv1, new_dims_after_one = self.convolutional_block(
+            in_channels=1, out_channels=3, kernel_size=kernel_size, stride=1)
+        self.conv2, new_dims_after_second = self.convolutional_block(
+            in_channels=3, out_channels=6, kernel_size=5, stride=1)
+        
+        final_h, final_w = new_dims_after_second(*new_dims_after_one(image_height=image_height, image_width=image_width))
+        flatten_output_dim = 6 * final_h * final_w
+        self.fc = self.sequential_network(flatten_output_dim, 32, n_classes)
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.learning_rate = learning_rate
@@ -247,11 +307,37 @@ class CNN2D(NNBaseModel):
         self.optimizer_name = f"{self.optimizer.__class__.__name__}"
 
     def forward(self, x):
-        x = self.pool_1(torch.relu(self.conv1(x)))
+        x = self.conv1(x)
+        x = self.conv2(x)
         x = torch.flatten(x, 1)
-        x = torch.relu(self.fc1(x))
-        x = torch.softmax(self.fc2(x), dim=1)
+        x = self.fc(x)
+        x = torch.softmax(x, dim=1)
         return x
+    
+    def convolutional_block(
+            self,
+            in_channels: int,
+            out_channels: int,
+            kernel_size: int,
+            stride: int = 1
+        ) -> Tuple[torch.nn.Module, callable]:
+        nn = torch.nn.Sequential(
+            torch.nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride),
+            torch.nn.Sigmoid(),
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+            torch.nn.Dropout(0.3)
+        )
+        new_dim_calc = partial(get_cnn_image_dimensions,
+                               kernel_size=kernel_size, stride=stride, padding=0, pool_stride=2)
+        return nn, new_dim_calc
+    
+    def sequential_network(self, input_dim: int, hidden_dim: int, output_dim: int):
+        return torch.nn.Sequential(
+            torch.nn.Linear(input_dim, hidden_dim),
+            torch.nn.Sigmoid(),
+            torch.nn.Linear(hidden_dim, output_dim)
+        )
+
 
     def run_training(
         self,
