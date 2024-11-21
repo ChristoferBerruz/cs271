@@ -1,0 +1,8 @@
+click
+pandas
+matplotlib
+seaborn
+scikit-learn
+polars
+torch
+tensorflow
